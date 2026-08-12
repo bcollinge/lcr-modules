@@ -79,6 +79,7 @@ lcr-modules:
             liftover: "{SCRIPTSDIR}/liftover/2.0/liftover.yaml"
 
         container_envs:
+            samtools: "docker://quay.io/biocontainers/samtools:1.10--h9402c20_2"
             cnvkit: "docker://quay.io/biocontainers/cnvkit:0.9.9--pyhdfd78af_0"
             bcftools: "docker://quay.io/biocontainers/bcftools:1.10.2--h4f4756c_3"
             bedtools: "docker://quay.io/biocontainers/bedtools:2.29.2--hc088bd4_0"

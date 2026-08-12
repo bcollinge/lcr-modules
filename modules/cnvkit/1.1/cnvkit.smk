@@ -63,9 +63,9 @@ rule _cnvkit_index_bam:
     log:
         log = CFG["logs"]["inputs"] + "bam/{seq_type}--{genome_build}/{capture_space}/{tumour_id}_index.log"
     conda:
-        CFG["conda_envs"]["cnvkit"]
+        CFG["conda_envs"]["samtools"]
     container:
-        CFG["container_envs"]["cnvkit"]
+        CFG["container_envs"]["samtools"]
     threads:
         CFG["threads"]["samtools"]
     shell:
