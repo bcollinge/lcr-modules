@@ -7,7 +7,7 @@
 # Original Author:  Anita dos Santos
 # Module Author:    Manuela Cruz
 # Contributors:     Laura Hilton
-# 1.4:              adapted from 1.2 for MiXCR 4.x (analyze presets, JDK17, license, native SHM).
+# 1.3:              adapted from 1.2 for MiXCR 4.x (analyze presets, JDK17, license, native SHM).
 
 
 ##### SETUP #####
@@ -116,14 +116,12 @@ rule _install_mixcr:
         touch  {output.complete};
         '''
 
-# MiXCR 4.x is split into analyze (heavy, ~hours) and export (cheap, seconds) so an
-# export tweak or transient failure never re-triggers the expensive analyze. The
-# rna-seq preset ends in assembleContigs, so the checkpoint clns is <prefix>.contigs.clns.
+
 rule _mixcr_analyze:
     input:
         fastq_1 = str(rules._mixcr_input_fastq.output.fastq_1),
         fastq_2 = str(rules._mixcr_input_fastq.output.fastq_2),
-        fastq_1_real = CFG["inputs"]["sample_fastq_1"], # prevent premature deletion of temp fastqs
+        fastq_1_real = CFG["inputs"]["sample_fastq_1"],
         fastq_2_real = CFG["inputs"]["sample_fastq_2"],
         installed = str(rules._install_mixcr.output.complete)
     output:
@@ -151,7 +149,7 @@ rule _mixcr_analyze:
         {input.fastq_1} {input.fastq_2} {params.prefix} > {log.stdout} 2> {log.stderr};
         """)
 
-# Cheap: clns -> ALL + per-chain exportClones (--dont-split-files, .tsv->.txt) + report.
+
 rule _mixcr_export:
     input:
         clns = str(rules._mixcr_analyze.output.clns)
