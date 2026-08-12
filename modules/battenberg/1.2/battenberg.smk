@@ -125,10 +125,7 @@ rule _battenberg_input_bam:
     group: "setup_run"
     run:
         op.absolute_symlink(input.bam, output.bam)
-        # Index source depends on the input type: BAMs carry a ".bai", CRAMs a
-        # ".crai". The original code hardcoded input.bam + ".bai", which does not
-        # exist for CRAM input, so both index symlinks dangled and the job failed
-        # with missing outputs. Pick whichever sidecar is present.
+        # BAMs carry a .bai sidecar, CRAMs a .crai
         index_src = input.bam + ".bai" if os.path.exists(input.bam + ".bai") else input.bam + ".crai"
         op.absolute_symlink(index_src, output.bai)
         op.absolute_symlink(index_src, output.crai)
