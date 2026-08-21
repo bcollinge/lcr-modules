@@ -92,7 +92,7 @@ lcr-modules:
                     mem_mb: 15000
                     chrom: 1
                 coverage:
-                    mem_mb: 18000
+                    mem_mb: 28000
                 normalDB:
                     mem_mb: 24000
 

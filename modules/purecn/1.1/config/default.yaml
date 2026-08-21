@@ -103,7 +103,7 @@ lcr-modules:
                 mem_mb: 15000
                 chrom: 1
             coverage:
-                mem_mb: 18000
+                mem_mb: 28000
             cnvkit_mode:
                 mem_mb: 90000
             denovo_mode:
