@@ -651,7 +651,7 @@ rule add_remove_chr_prefix_baits_bed:
 rule hardlink_download:
     input: hardlink_same_provider
     output: "genomes/{genome_build}/downloads/{suffix}"
-    shell: "ln -f {input} {output}"
+    shell: "ln -srf {input} {output}"
 
 
 rule update_contig_names:
@@ -676,7 +676,7 @@ rule update_contig_names:
     shell:
         op.as_one_line("""
         if [[ '{wildcards.to_provider}' == '{params[from_provider]}' ]]; then
-            ln -f {input.before} {output.after};
+            ln -srf {input.before} {output.after};
         else
             cvbio UpdateContigNames --in {input.before} --out {output.after}
             --mapping {params.mapping} --comment-chars '{params.comment}'
