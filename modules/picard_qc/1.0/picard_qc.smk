@@ -103,6 +103,7 @@ rule _picard_qc_alignment_summary:
 rule _picard_qc_insert_size:
     input:
         bam = rules._picard_qc_input_bam.output.sample_bam,
+        fasta = reference_files("genomes/{genome_build}/genome_fasta/genome.fa")
     output:
         metrics = CFG["dirs"]["metrics"] + "{seq_type}--{genome_build}/{sample_id}/insert_size_metrics",
         histogram = CFG["dirs"]["metrics"] + "{seq_type}--{genome_build}/{sample_id}/insert_size_histogram.pdf"
@@ -123,7 +124,7 @@ rule _picard_qc_insert_size:
         op.as_one_line("""
         picard -Xmx{resources.mem_mb}m CollectInsertSizeMetrics
         {params.opts} 
-        I={input.bam} O={output.metrics} H={output.histogram}
+        I={input.bam} O={output.metrics} H={output.histogram} R={input.fasta}
         > {log.stdout} 2> {log.stderr}
         """)
 
