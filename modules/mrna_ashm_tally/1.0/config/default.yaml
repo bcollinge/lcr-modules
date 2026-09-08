@@ -12,8 +12,8 @@ lcr-modules:
         # "chrom:start-end" 1-based inclusive in that build's coordinates. Every
         # position in every region is reported, so a region should be a locus of
         # interest rather than a whole chromosome. Every build present in the
-        # samples needs an entry.
-        regions: "__UPDATE__"
+        # samples needs an entry, and the module fails at setup if one is absent.
+        regions: {}
 
         options:
             # reads below these are excluded from the counts; a base is only

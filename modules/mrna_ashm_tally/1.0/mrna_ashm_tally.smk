@@ -53,7 +53,9 @@ _REGIONS = CFG["regions"]
 _BUILDS = sorted(set(_SAMPLES["genome_build"]))
 _missing = [b for b in _BUILDS if b not in _REGIONS]
 assert not _missing, (
-    "no regions configured for genome build(s): " + ", ".join(_missing))
+    "mrna_ashm_tally: no regions configured for genome build(s): "
+    + ", ".join(_missing)
+    + ". Set `regions` in the project config, keyed by genome build.")
 
 
 # Define rules to be run locally when using a compute cluster
