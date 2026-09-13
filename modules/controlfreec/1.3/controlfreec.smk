@@ -320,7 +320,7 @@ rule _controlfreec_mpileup_per_chrom:
     shell:
         "samtools mpileup -l {input.bed} -r {wildcards.chrom} -Q 20 -f {input.fastaFile} {input.bam} | gzip -c > {output.pileup} 2> {log.stderr}"
 
-# set-up mpileups per chromosome for BAF calling
+# set-up mpileups per chromosome for BAF calling (FREEC miniPileup); read depth comes from the BAM
 def _get_chr_mpileups(wildcards):
     CFG = config["lcr-modules"]["controlfreec"]
     with open(checkpoints._controlfreec_input_chroms.get(**wildcards).output.txt) as f:
@@ -369,8 +369,10 @@ def _controlfreec_get_optional_window(wildcards):
 
 rule _controlfreec_config_contamAdjTrue:
     input:
-        tumour_bam = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
-        normal_bam = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz",
+        tumour_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{tumour_id}.bam",
+        normal_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{normal_id}.bam",
+        tumour_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
+        normal_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz",
         mappability = CFG["dirs"]["inputs"] + "references/mappability/{masked}/out100m2_{genome_build}.gem",
         chrLen = str(rules._controlfreec_generate_chrLen.output.chrLen),
         done = str(rules._controlfreec_check_chrFiles.output),
@@ -413,19 +415,18 @@ rule _controlfreec_config_contamAdjTrue:
     shell:
         "samtoolspath=$(which samtools ) ; "
         "samtoolsPathName=$(echo $samtoolspath) ; "
-        "sambambapath=$(which sambamba ) ; "
-        "sambambaPathName=$(echo $sambambapath) ; "
         "bedtoolspath=$(which bedtools ) ; "
         "bedtoolsPathName=$(echo $bedtoolspath) ; "
-        "sed \"s|BAMFILE|{input.tumour_bam}|g\" {params.config} | "
-        "sed \"s|CONTROLFILE|{input.normal_bam}|g\" | "
+        "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" {params.config} | "
+        "sed \"s|CONTROLFILE|$(realpath -s {input.normal_bam})|g\" | "
+        "sed \"s|TUMOURPILEUP|{input.tumour_pileup}|g\" | "
+        "sed \"s|CONTROLPILEUP|{input.normal_pileup}|g\" | "
         "sed \"s|OUTDIR|{params.outdir}|g\" | "
         "sed \"s|DBsnpFile|{input.dbsnp}|g\" | "
         "sed \"s|phredQuality|{params.shiftInQuality}|g\" | "
         "sed \"s|ploidyInput|{params.ploidy}|g\" | "
         "sed \"s|chrLenFileInput|{input.chrLen}|g\" | "
         "sed \"s|chrFilesPath|{params.chrFiles}|g\" | "
-        "sed \"s|sambambaPath|$sambambaPathName|g\" | "
         "sed \"s|bedtoolsPath|$bedtoolsPathName|g\" | "
         "sed \"s|samtoolsPath|$samtoolsPathName|g\" | "
         "sed \"s|breakPointValue|{params.breakPointValue}|g\" | "
@@ -455,8 +456,10 @@ rule _controlfreec_config_contamAdjTrue:
 
 rule _controlfreec_config_contamAdjFalse:
     input:
-        tumour_bam = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
-        normal_bam = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz",
+        tumour_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{tumour_id}.bam",
+        normal_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{normal_id}.bam",
+        tumour_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
+        normal_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz",
         mappability = CFG["dirs"]["inputs"] + "references/mappability/{masked}/out100m2_{genome_build}.gem",
         chrLen = str(rules._controlfreec_generate_chrLen.output.chrLen),
         done = str(rules._controlfreec_check_chrFiles.output),
@@ -499,19 +502,18 @@ rule _controlfreec_config_contamAdjFalse:
     shell:
         "samtoolspath=$(which samtools ) ; "
         "samtoolsPathName=$(echo $samtoolspath) ; "
-        "sambambapath=$(which sambamba ) ; "
-        "sambambaPathName=$(echo $sambambapath) ; "
         "bedtoolspath=$(which bedtools ) ; "
         "bedtoolsPathName=$(echo $bedtoolspath) ; "
-        "sed \"s|BAMFILE|{input.tumour_bam}|g\" {params.config} | "
-        "sed \"s|CONTROLFILE|{input.normal_bam}|g\" | "
+        "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" {params.config} | "
+        "sed \"s|CONTROLFILE|$(realpath -s {input.normal_bam})|g\" | "
+        "sed \"s|TUMOURPILEUP|{input.tumour_pileup}|g\" | "
+        "sed \"s|CONTROLPILEUP|{input.normal_pileup}|g\" | "
         "sed \"s|OUTDIR|{params.outdir}|g\" | "
         "sed \"s|DBsnpFile|{input.dbsnp}|g\" | "
         "sed \"s|phredQuality|{params.shiftInQuality}|g\" | "
         "sed \"s|ploidyInput|{params.ploidy}|g\" | "
         "sed \"s|chrLenFileInput|{input.chrLen}|g\" | "
         "sed \"s|chrFilesPath|{params.chrFiles}|g\" | "
-        "sed \"s|sambambaPath|$sambambaPathName|g\" | "
         "sed \"s|bedtoolsPath|$bedtoolsPathName|g\" | "
         "sed \"s|samtoolsPath|$samtoolsPathName|g\" | "
         "sed \"s|breakPointValue|{params.breakPointValue}|g\" | "
@@ -545,8 +547,10 @@ checkpoint _controlfreec_run:
     input:
         config_contamTrue = str(rules._controlfreec_config_contamAdjTrue.output.config),
         config_contamFalse = str(rules._controlfreec_config_contamAdjFalse.output.config),
-        tumour_bam = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
-        normal_bam = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz"
+        tumour_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{tumour_id}.bam",
+        normal_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{normal_id}.bam",
+        tumour_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
+        normal_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz"
     output:
         done = CFG["dirs"]["run"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/done"
     conda:
@@ -579,21 +583,21 @@ checkpoint _controlfreec_run:
 def _get_run_result(wildcards):
     CFG = config["lcr-modules"]["controlfreec"]
     base_dir = os.path.dirname(str(checkpoints._controlfreec_run.get(**wildcards).output[0]))
-    CONTAM, = glob_wildcards(base_dir + "/{contamAdj}/{tumour_id}.bam_minipileup.pileup.gz_CNVs").contamAdj
+    CONTAM, = glob_wildcards(base_dir + "/{contamAdj}/{tumour_id}.bam_CNVs").contamAdj
     CONTAM = [CONTAM] if isinstance(CONTAM, str) else CONTAM # makes it a list when only one value is returned by the glob
     if any("True" in c for c in CONTAM):
         files = {
-            "info":base_dir + "/contamAdjTrue/{tumour_id}.bam_minipileup.pileup.gz_info.txt",
-            "ratios":base_dir + "/contamAdjTrue/{tumour_id}.bam_minipileup.pileup.gz_ratio.txt",
-            "CNV":base_dir + "/contamAdjTrue/{tumour_id}.bam_minipileup.pileup.gz_CNVs",
-            "BAF":base_dir + "/contamAdjTrue/{tumour_id}.bam_minipileup.pileup.gz_BAF.txt"
+            "info":base_dir + "/contamAdjTrue/{tumour_id}.bam_info.txt",
+            "ratios":base_dir + "/contamAdjTrue/{tumour_id}.bam_ratio.txt",
+            "CNV":base_dir + "/contamAdjTrue/{tumour_id}.bam_CNVs",
+            "BAF":base_dir + "/contamAdjTrue/{tumour_id}.bam_BAF.txt"
         }
     else:
         files = {
-            "info":base_dir + "/contamAdjFalse/{tumour_id}.bam_minipileup.pileup.gz_info.txt",
-            "ratios":base_dir + "/contamAdjFalse/{tumour_id}.bam_minipileup.pileup.gz_ratio.txt",
-            "CNV":base_dir + "/contamAdjFalse/{tumour_id}.bam_minipileup.pileup.gz_CNVs",
-            "BAF":base_dir + "/contamAdjFalse/{tumour_id}.bam_minipileup.pileup.gz_BAF.txt"
+            "info":base_dir + "/contamAdjFalse/{tumour_id}.bam_info.txt",
+            "ratios":base_dir + "/contamAdjFalse/{tumour_id}.bam_ratio.txt",
+            "CNV":base_dir + "/contamAdjFalse/{tumour_id}.bam_CNVs",
+            "BAF":base_dir + "/contamAdjFalse/{tumour_id}.bam_BAF.txt"
         }
     return files
 
@@ -601,10 +605,10 @@ rule _controlfreec_symlink_run_result:
     input:
         unpack(_get_run_result)
     output:
-        info = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_minipileup.pileup.gz_info.txt",
-        ratios = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_minipileup.pileup.gz_ratio.txt",
-        CNV = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_minipileup.pileup.gz_CNVs",
-        BAF = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_minipileup.pileup.gz_BAF.txt"
+        info = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_info.txt",
+        ratios = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_ratio.txt",
+        CNV = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_CNVs",
+        BAF = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_BAF.txt"
     run:
         op.relative_symlink(input.info, output.info, in_module = True)
         op.relative_symlink(input.ratios, output.ratios, in_module = True)
@@ -618,7 +622,7 @@ rule _controlfreec_calc_sig:
         CNV = str(rules._controlfreec_symlink_run_result.output.CNV),
         BAF = str(rules._controlfreec_symlink_run_result.output.BAF)
     output:
-        txt = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_minipileup.pileup.gz_CNVs.p.value.txt"
+        txt = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_CNVs.p.value.txt"
     params:
         calc_sig = CFG["software"]["FREEC_sig"]
     threads:
@@ -642,9 +646,9 @@ rule _controlfreec_plot:
         CNV = str(rules._controlfreec_symlink_run_result.output.CNV),
         BAF = str(rules._controlfreec_symlink_run_result.output.BAF)
     output:
-        plot = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_minipileup.pileup.gz_ratio.txt.png",
-        log2plot = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_minipileup.pileup.gz_ratio.txt.log2.png",
-        bafplot = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_minipileup.pileup.gz_BAF.txt.png"
+        plot = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_ratio.txt.png",
+        log2plot = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_ratio.txt.log2.png",
+        bafplot = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_BAF.txt.png"
     params:
         plot = CFG["software"]["FREEC_graph"]
     threads: 1

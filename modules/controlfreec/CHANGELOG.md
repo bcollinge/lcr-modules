@@ -82,3 +82,11 @@ Authored by Sierra Gillis
 - better formatting of rules and configs i.e. removed the need to specify the output paths in the config and cleaned up prepare_projection input function
 - cleaned up formatting to be consistent between all CNV calling modules
 - removed rule grouping for easier troubleshooting of errors
+
+## [1.3] - 2026-09-12
+
+- FREEC now reads copy-number depth from the BAM/CRAM (`inputFormat = BAM`, samtools) and
+  takes the dbSNP mini-pileups only for BAF (`miniPileup`). Since 1.2 the mini-pileup had been
+  the sole `mateFile`, so FREEC counted only reads starting on a common SNP position; fine at
+  30x, but at low-pass depth it inflated the auto window to several Mb and crashed. sambamba
+  is no longer referenced. CRAM inputs need a resolvable reference (header UR or REF_PATH).

@@ -4,7 +4,6 @@
 [general]
 
 maxThreads = numThreads
-sambamba = sambambaPath
 bedtools = bedtoolsPath
 samtools = samtoolsPath
 chrFiles = chrFilesPath
@@ -36,14 +35,16 @@ uniqueMatch = uniqBoo
 [sample]
 
 mateFile = BAMFILE
-inputFormat = pileup
+miniPileup = TUMOURPILEUP
+inputFormat = BAM
 mateOrientation = FR
 
 
 [control]
 
 mateFile = CONTROLFILE
-inputFormat = pileup
+miniPileup = CONTROLPILEUP
+inputFormat = BAM
 mateOrientation = FR
 
 
