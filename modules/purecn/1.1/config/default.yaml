@@ -38,6 +38,7 @@ lcr-modules:
         requested_projections: ["grch37", "hg38"]
 
         options:
+            strip_antitarget: [] # capture spaces whose .cnr is reduced to target bins before cnvkit mode
             mutect2:
                 mutect2_opts: ""
                 annotate: "" # for gatk FilterMutectCalls which just annotates variants for later filtering when this is blank

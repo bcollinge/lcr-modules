@@ -100,13 +100,23 @@ rule _purecn_symlink_cnvkit_seg:
     run:
         op.absolute_symlink(input.seg, output.seg)
 
+# Capture spaces listed in options.strip_antitarget get a target-only copy of the .cnr:
+# efficient kits leave the off-target bins too sparse for PureCN's cnvkit mode.
 rule _purecn_symlink_cnvkit_cnr:
     input:
         cnr = CFG["inputs"]["cnvkit_cnr"]
     output:
         cnr = CFG["dirs"]["inputs"] + "cnr/{seq_type}--{genome_build}/{capture_space}/{tumour_id}.cnr"
+    params:
+        strip = CFG["options"].get("strip_antitarget") or []
     run:
-        op.absolute_symlink(input.cnr, output.cnr)
+        if wildcards.capture_space in params.strip:
+            with open(input.cnr) as fin, open(output.cnr, "w") as fout:
+                for i, line in enumerate(fin):
+                    if i == 0 or "antitarget" not in line.split("\t")[3].lower():
+                        fout.write(line)
+        else:
+            op.absolute_symlink(input.cnr, output.cnr)
 
 rule _purecn_setup_blacklist_bed:
     input:
