@@ -924,7 +924,7 @@ rule _controlfreec_all:
             normal_id=CFG["runs"]["normal_sample_id"],
             allow_missing = True
             ),
-         masked=["masked", "unmasked"]
+         masked=CFG["options"].get("masked_arms") or ["masked", "unmasked"]
         ),
         expand(
             expand(
@@ -939,7 +939,7 @@ rule _controlfreec_all:
                 allow_missing = True
             ),
         tool="controlfreec",
-        masked=["masked", "unmasked"],
+        masked=CFG["options"].get("masked_arms") or ["masked", "unmasked"],
         projection=CFG["requested_projections"]
         )
 
