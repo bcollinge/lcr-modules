@@ -367,6 +367,12 @@ def _controlfreec_get_optional_window(wildcards):
         cfg_window = "#window = " + str(CFG["options"]["window"]) # will stay commented out, won't be used, just needed for the code below
     return cfg_window
 
+def _controlfreec_get_contamination_line(wildcards):
+    CFG = config["lcr-modules"]["controlfreec"]
+    if CFG["options"]["contamination_mode"] == "supplied":
+        return "contamination = " + str(CFG["options"]["contamination"])
+    return "#contamination = " + str(CFG["options"]["contamination"])
+
 rule _controlfreec_config_contamAdjTrue:
     input:
         tumour_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{tumour_id}.bam",
@@ -389,7 +395,7 @@ rule _controlfreec_config_contamAdjTrue:
         window = _controlfreec_get_optional_window,
         step = _controlfreec_get_optional_step,
         booCon = "TRUE",
-        numCon = CFG["options"]["contamination"],
+        numCon = _controlfreec_get_contamination_line,
         bedGraphOutput = CFG["options"]["BedGraphOutput"],
         breakPointValue = CFG["options"]["breakPointThreshold"],
         breakPointType = CFG["options"]["breakPointType"],
@@ -476,7 +482,7 @@ rule _controlfreec_config_contamAdjFalse:
         window = _controlfreec_get_optional_window,
         step = _controlfreec_get_optional_step,
         booCon = "FALSE",
-        numCon = CFG["options"]["contamination"],
+        numCon = _controlfreec_get_contamination_line,
         bedGraphOutput = CFG["options"]["BedGraphOutput"],
         breakPointValue = CFG["options"]["breakPointThreshold"],
         breakPointType = CFG["options"]["breakPointType"],
@@ -540,9 +546,9 @@ rule _controlfreec_config_contamAdjFalse:
         "sed \"s|numThreads|{params.threads}|g\" | "
         "sed \"s|referenceFile|{input.mappability}|g\" > {output.config}"
 
-# Tries to run with contamAdj = True case first; if it fails then it tries to
-# run contamAdj = False; if that also fails, then snakemake receives an error code
-# for the rule and the done file isn't made
+# contamination_mode "estimate": contamAdj = True first, contamAdj = False if that fails;
+# "supplied": contamAdj = True with the config contamination value, no fallback;
+# "none": contamAdj = False only. An error in the last branch tried fails the rule.
 checkpoint _controlfreec_run:
     input:
         config_contamTrue = str(rules._controlfreec_config_contamAdjTrue.output.config),
@@ -564,20 +570,24 @@ checkpoint _controlfreec_run:
     log:
         log_contamTrue = CFG["logs"]["run"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/run.contamTrue.log",
         log_contamFalse = CFG["logs"]["run"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/run.contamFalse.log"
+    params:
+        mode = CFG["options"]["contamination_mode"]
     shell:
         """
         set +e
-        freec -conf {input.config_contamTrue} &> {log.log_contamTrue}
-        if [[ $? -ne 0 ]]; then
-            freec -conf {input.config_contamFalse} &> {log.log_contamFalse}
+        if [[ {params.mode} == none ]]; then
+            freec -conf {input.config_contamFalse} &> {log.log_contamFalse} && touch {output.done}
+        elif [[ {params.mode} == supplied ]]; then
+            freec -conf {input.config_contamTrue} &> {log.log_contamTrue} && touch {output.done}
+        else
+            freec -conf {input.config_contamTrue} &> {log.log_contamTrue}
             if [[ $? -ne 0 ]]; then
-                exit 1
+                freec -conf {input.config_contamFalse} &> {log.log_contamFalse} && touch {output.done}
             else
                 touch {output.done}
             fi
-        else
-            touch {output.done}
         fi
+        [[ -e {output.done} ]]
         """
 
 def _get_run_result(wildcards):
@@ -608,12 +618,20 @@ rule _controlfreec_symlink_run_result:
         info = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_info.txt",
         ratios = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_ratio.txt",
         CNV = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_CNVs",
-        BAF = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_BAF.txt"
+        BAF = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_BAF.txt",
+        branch = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.contam_branch.txt"
+    params:
+        mode = CFG["options"]["contamination_mode"],
+        contamination = CFG["options"]["contamination"]
     run:
         op.relative_symlink(input.info, output.info, in_module = True)
         op.relative_symlink(input.ratios, output.ratios, in_module = True)
         op.relative_symlink(input.CNV, output.CNV, in_module = True)
         op.relative_symlink(input.BAF, output.BAF, in_module = True)
+        branch = os.path.basename(os.path.dirname(input.info))
+        with open(output.branch, "w") as f:
+            f.write("contam_adj_branch\tcontamination_mode\tcontamination\n")
+            f.write(branch + "\t" + params.mode + "\t" + str(params.contamination) + "\n")
 
 rule _controlfreec_calc_sig:
     input:
@@ -882,7 +900,8 @@ rule _controlfreec_output:
         bed = str(rules._controlfreec_freec2bed.output.bed),
         BAFgraph = str(rules._controlfreec_plot.output.bafplot),
         circos = str(rules._controlfreec_freec2circos.output.circos),
-        igv = str(rules._controlfreec_cnv2igv.output.seg)
+        igv = str(rules._controlfreec_cnv2igv.output.seg),
+        branch = str(rules._controlfreec_symlink_run_result.output.branch)
     output:
         plot = CFG["dirs"]["outputs"] + "png/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.ratio.png",
         log2plot = CFG["dirs"]["outputs"] + "png/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.ratio.log2.png",
@@ -890,7 +909,8 @@ rule _controlfreec_output:
         bed = CFG["dirs"]["outputs"] + "bed/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.CNVs.bed",
         BAFgraph = CFG["dirs"]["outputs"] + "png/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.BAF.png",
         circos = CFG["dirs"]["outputs"] + "bed/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.circos.bed",
-        igv = CFG["dirs"]["outputs"] + "seg/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.CNVs.seg"
+        igv = CFG["dirs"]["outputs"] + "seg/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.CNVs.seg",
+        branch = CFG["dirs"]["outputs"] + "txt/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.contam_branch.txt"
     run:
         op.relative_symlink(input.plot, output.plot, in_module = True)
         op.relative_symlink(input.log2plot, output.log2plot, in_module = True)
@@ -899,6 +919,7 @@ rule _controlfreec_output:
         op.relative_symlink(input.BAFgraph, output.BAFgraph, in_module = True)
         op.relative_symlink(input.circos, output.circos, in_module = True)
         op.relative_symlink(input.igv, output.igv, in_module = True)
+        op.relative_symlink(input.branch, output.branch, in_module = True)
 
 
 # Generates the target sentinels for each run, which generate the symlinks
@@ -914,6 +935,7 @@ rule _controlfreec_all:
                 str(rules._controlfreec_output.output.BAFgraph),
                 str(rules._controlfreec_output.output.circos),
                 str(rules._controlfreec_output.output.igv),
+                str(rules._controlfreec_output.output.branch),
                 str(rules._controlfreec_run.output.done)
             ],
             zip,  # Run expand() with zip(), not product()

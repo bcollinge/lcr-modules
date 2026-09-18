@@ -60,6 +60,8 @@ lcr-modules:
             # the module is set up to run both cases, contaminationAdjustment TRUE and FALSE;
             # if TRUE does not error, it's result will be processed further; otherwise the result for the case when contaminationAdjustment is FALSE will be processed further
             contamination: 0
+            # estimate: contaminationAdjustment TRUE, FALSE if TRUE fails; supplied: TRUE with the value above, no fallback; none: FALSE only
+            contamination_mode: "estimate"
             # step and window will overrule coefficientOfVariation value above if they are not ""
             step: "" # e.g. 20000, only if window is specified; do not use for WES
             window: "" # e.g. 100000
