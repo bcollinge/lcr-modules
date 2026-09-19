@@ -571,10 +571,13 @@ checkpoint _controlfreec_run:
         log_contamTrue = CFG["logs"]["run"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/run.contamTrue.log",
         log_contamFalse = CFG["logs"]["run"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/run.contamFalse.log"
     params:
-        mode = CFG["options"]["contamination_mode"]
+        mode = CFG["options"]["contamination_mode"],
+        outdir_true = str(rules._controlfreec_config_contamAdjTrue.params.outdir),
+        outdir_false = str(rules._controlfreec_config_contamAdjFalse.params.outdir)
     shell:
         """
         set +e
+        find {params.outdir_true} {params.outdir_false} -type f ! -name config.txt -delete
         if [[ {params.mode} == none ]]; then
             freec -conf {input.config_contamFalse} &> {log.log_contamFalse} && touch {output.done}
         elif [[ {params.mode} == supplied ]]; then
@@ -593,8 +596,7 @@ checkpoint _controlfreec_run:
 def _get_run_result(wildcards):
     CFG = config["lcr-modules"]["controlfreec"]
     base_dir = os.path.dirname(str(checkpoints._controlfreec_run.get(**wildcards).output[0]))
-    CONTAM, = glob_wildcards(base_dir + "/{contamAdj}/{tumour_id}.bam_CNVs").contamAdj
-    CONTAM = [CONTAM] if isinstance(CONTAM, str) else CONTAM # makes it a list when only one value is returned by the glob
+    CONTAM = glob_wildcards(base_dir + "/{contamAdj}/{tumour_id}.bam_CNVs").contamAdj
     if any("True" in c for c in CONTAM):
         files = {
             "info":base_dir + "/contamAdjTrue/{tumour_id}.bam_info.txt",
