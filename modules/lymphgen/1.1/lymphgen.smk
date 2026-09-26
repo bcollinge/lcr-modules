@@ -81,7 +81,7 @@ rule _lymphgen_input_maf:
     output:
         maf = CFG["dirs"]["inputs"] + "maf/" + outprefix + ".maf"
     run:
-        op.relative_symlink(input.maf, output.maf, in_module=True)
+        op.absolute_symlink(input.maf, output.maf)
 
 rule _lymphgen_input_seg:
     input:
@@ -89,7 +89,7 @@ rule _lymphgen_input_seg:
     output:
         seg = CFG["dirs"]["inputs"] + "seg/" + outprefix + ".seg"
     run:
-        op.relative_symlink(input.seg, output.seg, in_module=True)
+        op.absolute_symlink(input.seg, output.seg)
 
 rule _lymphgen_input_sv:
     input:
@@ -97,7 +97,7 @@ rule _lymphgen_input_sv:
     output:
         sv = CFG["dirs"]["inputs"] + "sv/" + outprefix + "_sv.tsv"
     run:
-        op.relative_symlink(input.sv, output.sv, in_module=True)
+        op.absolute_symlink(input.sv, output.sv)
 
 rule _lymphgen_input_gene_list:
     input:
@@ -105,7 +105,7 @@ rule _lymphgen_input_gene_list:
     output:
         genes = CFG["dirs"]["inputs"] + "gene_list/" + outprefix + "gene_list.tsv"
     run:
-        op.relative_symlink(input.genes, output.genes, in_module=True)
+        op.absolute_symlink(input.genes, output.genes)
 
 # STEP 2: REFORMAT SEG FILE
 # Make sure the SEG columns are consistent
