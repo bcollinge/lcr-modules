@@ -65,6 +65,8 @@ lcr-modules:
             # step and window will overrule coefficientOfVariation value above if they are not ""
             step: "" # e.g. 20000, only if window is specified; do not use for WES
             window: "" # e.g. 100000
+            # True: count each BAM once per window/step (FREEC .cpn) and have every run read the counts via mateCopyNumberFile; requires window
+            count_cache: False
 
             #BAF options:
             minimalCoveragePerPosition: 10 # for BAF: minimum position coverage default is 0

@@ -373,10 +373,74 @@ def _controlfreec_get_contamination_line(wildcards):
         return "contamination = " + str(CFG["options"]["contamination"])
     return "#contamination = " + str(CFG["options"]["contamination"])
 
+# count_cache: per-window read counts (FREEC .cpn) are computed once per sample and window/step,
+# and every run reads them via mateCopyNumberFile instead of re-reading the BAM.
+# The file is named {sample_id}.bam because FREEC names its outputs after the input's basename.
+if CFG["options"]["count_cache"] and CFG["options"]["window"] == "":
+    raise ValueError("controlfreec: count_cache requires options.window")
+_CFC_COUNT_STEP = CFG["options"]["step"] if CFG["options"]["step"] != "" else CFG["options"]["window"]
+_CFC_COUNT_CACHE = CFG["dirs"]["run"] + "count_cache/{seq_type}--{genome_build}/window" + str(CFG["options"]["window"]) + "_step" + str(_CFC_COUNT_STEP) + "/{sample_id}.bam"
+_CFC_READS_KEY = "mateCopyNumberFile" if CFG["options"]["count_cache"] else "mateFile"
+
+def _controlfreec_reads_input(id_wildcard):
+    def _get(wildcards):
+        CFG = config["lcr-modules"]["controlfreec"]
+        if CFG["options"]["count_cache"]:
+            path = _CFC_COUNT_CACHE
+        else:
+            path = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{sample_id}.bam"
+        return path.format(seq_type = wildcards.seq_type, genome_build = wildcards.genome_build, sample_id = wildcards[id_wildcard])
+    return _get
+
+rule _controlfreec_count_cache:
+    input:
+        bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{sample_id}.bam",
+        chrLen = str(rules._controlfreec_generate_chrLen.output.chrLen),
+        done = str(rules._controlfreec_check_chrFiles.output)
+    output:
+        counts = _CFC_COUNT_CACHE
+    conda:
+        CFG["conda_envs"]["controlfreec"]
+    container:
+        CFG["container_envs"]["controlfreec"]
+    threads:
+        CFG["threads"]["controlfreec_run"]
+    resources:
+        **CFG["resources"]["controlfreec_run"]
+    log:
+        _CFC_COUNT_CACHE.replace(CFG["dirs"]["run"], CFG["logs"]["run"]) + ".log"
+    params:
+        outdir = _CFC_COUNT_CACHE + "_freec/",
+        chrFiles = CFG["dirs"]["inputs"] + "references/{genome_build}/chr/",
+        window = CFG["options"]["window"],
+        step = _CFC_COUNT_STEP
+    shell:
+        """
+        rm -rf {params.outdir} && mkdir -p {params.outdir}
+        (
+        echo "[general]"
+        echo "maxThreads = {threads}"
+        echo "samtools = $(which samtools)"
+        echo "chrLenFile = {input.chrLen}"
+        echo "chrFiles = {params.chrFiles}"
+        echo "window = {params.window}"
+        echo "step = {params.step}"
+        echo "outputDir = {params.outdir}"
+        echo "[sample]"
+        echo "mateFile = $(realpath -s {input.bam})"
+        echo "inputFormat = BAM"
+        echo "mateOrientation = FR"
+        ) > {params.outdir}config.txt
+        # the .cpn is written right after counting; later unpaired steps are not needed
+        freec -conf {params.outdir}config.txt &> {log} || true
+        mv {params.outdir}{wildcards.sample_id}.bam_sample.cpn {output.counts}
+        rm -rf {params.outdir}
+        """
+
 rule _controlfreec_config_contamAdjTrue:
     input:
-        tumour_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{tumour_id}.bam",
-        normal_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{normal_id}.bam",
+        tumour_bam = _controlfreec_reads_input("tumour_id"),
+        normal_bam = _controlfreec_reads_input("normal_id"),
         tumour_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
         normal_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz",
         mappability = CFG["dirs"]["inputs"] + "references/mappability/{masked}/out100m2_{genome_build}.gem",
@@ -392,6 +456,7 @@ rule _controlfreec_config_contamAdjTrue:
     threads: 1
     params:
         config = CFG["options"]["configFile"],
+        reads_key = _CFC_READS_KEY,
         window = _controlfreec_get_optional_window,
         step = _controlfreec_get_optional_step,
         booCon = "TRUE",
@@ -423,7 +488,9 @@ rule _controlfreec_config_contamAdjTrue:
         "samtoolsPathName=$(echo $samtoolspath) ; "
         "bedtoolspath=$(which bedtools ) ; "
         "bedtoolsPathName=$(echo $bedtoolspath) ; "
-        "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" {params.config} | "
+        "sed \"s|^mateFile = BAMFILE|{params.reads_key} = BAMFILE|\" {params.config} | "
+        "sed \"s|^mateFile = CONTROLFILE|{params.reads_key} = CONTROLFILE|\" | "
+        "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" | "
         "sed \"s|CONTROLFILE|$(realpath -s {input.normal_bam})|g\" | "
         "sed \"s|TUMOURPILEUP|{input.tumour_pileup}|g\" | "
         "sed \"s|CONTROLPILEUP|{input.normal_pileup}|g\" | "
@@ -462,8 +529,8 @@ rule _controlfreec_config_contamAdjTrue:
 
 rule _controlfreec_config_contamAdjFalse:
     input:
-        tumour_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{tumour_id}.bam",
-        normal_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{normal_id}.bam",
+        tumour_bam = _controlfreec_reads_input("tumour_id"),
+        normal_bam = _controlfreec_reads_input("normal_id"),
         tumour_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
         normal_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz",
         mappability = CFG["dirs"]["inputs"] + "references/mappability/{masked}/out100m2_{genome_build}.gem",
@@ -479,6 +546,7 @@ rule _controlfreec_config_contamAdjFalse:
     threads: 1
     params:
         config = CFG["options"]["configFile"],
+        reads_key = _CFC_READS_KEY,
         window = _controlfreec_get_optional_window,
         step = _controlfreec_get_optional_step,
         booCon = "FALSE",
@@ -510,7 +578,9 @@ rule _controlfreec_config_contamAdjFalse:
         "samtoolsPathName=$(echo $samtoolspath) ; "
         "bedtoolspath=$(which bedtools ) ; "
         "bedtoolsPathName=$(echo $bedtoolspath) ; "
-        "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" {params.config} | "
+        "sed \"s|^mateFile = BAMFILE|{params.reads_key} = BAMFILE|\" {params.config} | "
+        "sed \"s|^mateFile = CONTROLFILE|{params.reads_key} = CONTROLFILE|\" | "
+        "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" | "
         "sed \"s|CONTROLFILE|$(realpath -s {input.normal_bam})|g\" | "
         "sed \"s|TUMOURPILEUP|{input.tumour_pileup}|g\" | "
         "sed \"s|CONTROLPILEUP|{input.normal_pileup}|g\" | "
