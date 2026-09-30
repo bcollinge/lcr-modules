@@ -380,7 +380,8 @@ if CFG["options"]["count_cache"] and CFG["options"]["window"] == "":
     raise ValueError("controlfreec: count_cache requires options.window")
 _CFC_COUNT_STEP = CFG["options"]["step"] if CFG["options"]["step"] != "" else CFG["options"]["window"]
 _CFC_COUNT_CACHE = CFG["dirs"]["run"] + "count_cache/{seq_type}--{genome_build}/window" + str(CFG["options"]["window"]) + "_step" + str(_CFC_COUNT_STEP) + "/{sample_id}.bam"
-_CFC_READS_KEY = "mateCopyNumberFile" if CFG["options"]["count_cache"] else "mateFile"
+# FREEC needs mateFile in [sample] even when mateCopyNumberFile is given; the .cpn takes priority.
+_CFC_CPN_LINE = "\\nmateCopyNumberFile = " if CFG["options"]["count_cache"] else ""
 
 def _controlfreec_reads_input(id_wildcard):
     def _get(wildcards):
@@ -439,8 +440,10 @@ rule _controlfreec_count_cache:
 
 rule _controlfreec_config_contamAdjTrue:
     input:
-        tumour_bam = _controlfreec_reads_input("tumour_id"),
-        normal_bam = _controlfreec_reads_input("normal_id"),
+        tumour_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{tumour_id}.bam",
+        normal_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{normal_id}.bam",
+        tumour_counts = _controlfreec_reads_input("tumour_id"),
+        normal_counts = _controlfreec_reads_input("normal_id"),
         tumour_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
         normal_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz",
         mappability = CFG["dirs"]["inputs"] + "references/mappability/{masked}/out100m2_{genome_build}.gem",
@@ -456,7 +459,7 @@ rule _controlfreec_config_contamAdjTrue:
     threads: 1
     params:
         config = CFG["options"]["configFile"],
-        reads_key = _CFC_READS_KEY,
+        cpn_line = _CFC_CPN_LINE,
         window = _controlfreec_get_optional_window,
         step = _controlfreec_get_optional_step,
         booCon = "TRUE",
@@ -488,8 +491,9 @@ rule _controlfreec_config_contamAdjTrue:
         "samtoolsPathName=$(echo $samtoolspath) ; "
         "bedtoolspath=$(which bedtools ) ; "
         "bedtoolsPathName=$(echo $bedtoolspath) ; "
-        "sed \"s|^mateFile = BAMFILE|{params.reads_key} = BAMFILE|\" {params.config} | "
-        "sed \"s|^mateFile = CONTROLFILE|{params.reads_key} = CONTROLFILE|\" | "
+        "if [ -n \"{params.cpn_line}\" ]; then tc=\"{params.cpn_line}$(realpath -s {input.tumour_counts})\"; nc=\"{params.cpn_line}$(realpath -s {input.normal_counts})\"; else tc=; nc=; fi; "
+        "sed \"s|^mateFile = BAMFILE|mateFile = BAMFILE$tc|\" {params.config} | "
+        "sed \"s|^mateFile = CONTROLFILE|mateFile = CONTROLFILE$nc|\" | "
         "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" | "
         "sed \"s|CONTROLFILE|$(realpath -s {input.normal_bam})|g\" | "
         "sed \"s|TUMOURPILEUP|{input.tumour_pileup}|g\" | "
@@ -529,8 +533,10 @@ rule _controlfreec_config_contamAdjTrue:
 
 rule _controlfreec_config_contamAdjFalse:
     input:
-        tumour_bam = _controlfreec_reads_input("tumour_id"),
-        normal_bam = _controlfreec_reads_input("normal_id"),
+        tumour_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{tumour_id}.bam",
+        normal_bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{normal_id}.bam",
+        tumour_counts = _controlfreec_reads_input("tumour_id"),
+        normal_counts = _controlfreec_reads_input("normal_id"),
         tumour_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
         normal_pileup = CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz",
         mappability = CFG["dirs"]["inputs"] + "references/mappability/{masked}/out100m2_{genome_build}.gem",
@@ -546,7 +552,7 @@ rule _controlfreec_config_contamAdjFalse:
     threads: 1
     params:
         config = CFG["options"]["configFile"],
-        reads_key = _CFC_READS_KEY,
+        cpn_line = _CFC_CPN_LINE,
         window = _controlfreec_get_optional_window,
         step = _controlfreec_get_optional_step,
         booCon = "FALSE",
@@ -578,8 +584,9 @@ rule _controlfreec_config_contamAdjFalse:
         "samtoolsPathName=$(echo $samtoolspath) ; "
         "bedtoolspath=$(which bedtools ) ; "
         "bedtoolsPathName=$(echo $bedtoolspath) ; "
-        "sed \"s|^mateFile = BAMFILE|{params.reads_key} = BAMFILE|\" {params.config} | "
-        "sed \"s|^mateFile = CONTROLFILE|{params.reads_key} = CONTROLFILE|\" | "
+        "if [ -n \"{params.cpn_line}\" ]; then tc=\"{params.cpn_line}$(realpath -s {input.tumour_counts})\"; nc=\"{params.cpn_line}$(realpath -s {input.normal_counts})\"; else tc=; nc=; fi; "
+        "sed \"s|^mateFile = BAMFILE|mateFile = BAMFILE$tc|\" {params.config} | "
+        "sed \"s|^mateFile = CONTROLFILE|mateFile = CONTROLFILE$nc|\" | "
         "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" | "
         "sed \"s|CONTROLFILE|$(realpath -s {input.normal_bam})|g\" | "
         "sed \"s|TUMOURPILEUP|{input.tumour_pileup}|g\" | "
