@@ -97,10 +97,16 @@ rule _vcf2maf_input_bam:
         op.absolute_symlink(input.bam, output.bam)
         op.absolute_symlink(input.bai, output.bai)
 
+# Normalized gnomAD sites VCF stem per genome build (options.gnomad_resource); unlisted builds use
+# af-only-gnomad.normalized.
+def _vcf2maf_normalized_gnomad(wildcards, stems=dict(CFG["options"].get("gnomad_resource", {}))):
+    stem = stems.get(wildcards.genome_build, "af-only-gnomad.normalized")
+    return reference_files(f"genomes/{wildcards.genome_build}/variation/{stem}.{wildcards.genome_build}.vcf.gz")
+
 rule _vcf2maf_annotate_gnomad:
     input:
         vcf = str(rules._vcf2maf_input_vcf.output.vcf_gz),
-        normalized_gnomad = reference_files("genomes/{genome_build}/variation/af-only-gnomad.normalized.{genome_build}.vcf.gz")
+        normalized_gnomad = _vcf2maf_normalized_gnomad
     output:
         vcf = temp(CFG["dirs"]["decompressed"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.annotated.vcf")
     conda:

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.0] - 2026-10-02
+
+- The `--germline-resource` VCF is set per genome build with `options.gnomad_resource` (a stem under `genomes/{genome_build}/variation/`); builds not listed keep `af-only-gnomad`.
+
 ## [2.0] - 2020-10-08
 
 This release was authored by Laura Hilton. 

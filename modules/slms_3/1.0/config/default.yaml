@@ -35,6 +35,7 @@ lcr-modules:
 
         options: 
             cleanup_vcfs: False # Boolean True or False. Indicate whether temp VCF files generated as part of SLMS-3 should be removed upon completion. 
+            gnomad_resource: {} # genome_build: gnomAD stem under genomes/{genome_build}/variation/ for the three gnomAD filters; unlisted builds use af-only-gnomad
             
         threads:
             strelka_gnomad: 4

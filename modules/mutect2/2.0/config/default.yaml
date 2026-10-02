@@ -17,6 +17,7 @@ lcr-modules:
 
         options:
             mutect2_run: ""
+            gnomad_resource: {} # genome_build: gnomAD stem under genomes/{genome_build}/variation/ for --germline-resource; unlisted builds use af-only-gnomad
             mutect2_interval_rules: "" # E.g. -ip 50 -isr INTERSECTION int pads each position by 50 bp and creates an intersect of the candidate positions with each chromosome region
             mutect2_pileupsummaries:
                 chrom: "17"

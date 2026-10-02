@@ -18,6 +18,7 @@ lcr-modules:
       src_dir: "{MODSDIR}/src"
     vcf_base_name: "__UPDATE__" #put the consistent portion of the file name here. For Strelka, this is "combined.passed"
     options:
+      gnomad_resource: {} # genome_build: normalized gnomAD stem under genomes/{genome_build}/variation/ for gnomADg_AF; unlisted builds use af-only-gnomad.normalized
       vep_path: "" # Path to directory containing vep executable; auto-detected from PATH if empty (set this when using a container that lacks VEP)
       vcf2maf: "--vcf-tumor-id TUMOR --vcf-normal-id NORMAL --cache-version 100"
       # --filter-vcf     A VCF for FILTER tag common_variant. Set to 0 to disable [~/.vep/ExAC_nonTCGA.r0.3.1.sites.vep.vcf.gz]

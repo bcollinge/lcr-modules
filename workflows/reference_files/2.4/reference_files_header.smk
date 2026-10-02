@@ -341,6 +341,39 @@ rule download_af_only_gnomad_vcf:
         fi
         """)
 
+
+# Native GRCh38 gnomAD v4.1 genomes, reduced to INFO/AF (all FILTERs kept; records without AF dropped).
+# Per-chromosome parts already reduced this way are read from config["gnomad_v4_local_parts"] when set.
+rule download_gnomad_v4_af_vcf:
+    output:
+        vcf = "downloads/gnomad/gnomad.genomes.v4.1.af.{version}.vcf"
+    log:
+        "downloads/gnomad/gnomad.genomes.v4.1.af.{version}.vcf.log"
+    params:
+        provider = lambda w: {"grch38": "ucsc"}[w.version],
+        url = "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/genomes/gnomad.genomes.v4.1.sites",
+        local = config.get("gnomad_v4_local_parts", ""),
+        parts = "downloads/gnomad/gnomad.genomes.v4.1.af.parts"
+    conda: CONDA_ENVS["bcftools"]
+    container: CONTAINER_ENVS["bcftools"]
+    shell:
+        op.as_one_line("""
+        mkdir -p {params.parts} &&
+        for c in $(seq 1 22) X Y; do
+            if [ -s "{params.local}/chr$c.af.vcf.gz" ]; then
+                bcftools view -e 'INFO/AF="."' -Oz -o {params.parts}/chr$c.vcf.gz {params.local}/chr$c.af.vcf.gz 2>> {log};
+            else
+                curl -sSf {params.url}.chr$c.vcf.bgz 2>> {log}
+                    |
+                bcftools annotate -x '^INFO/AF' 2>> {log}
+                    |
+                bcftools view -e 'INFO/AF="."' -Oz -o {params.parts}/chr$c.vcf.gz 2>> {log};
+            fi || exit 1;
+        done &&
+        bcftools concat $(for c in $(seq 1 22) X Y; do echo {params.parts}/chr$c.vcf.gz; done) -Ov -o {output.vcf} 2>> {log} &&
+        rm -r {params.parts}
+        """)
+
 rule download_mutect2_pon:
     output:
         vcf = "downloads/mutect2/mutect2_pon.{version}.vcf"
