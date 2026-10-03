@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.4] - 2026-10-02
 
-- Added `download_gnomad_v4_af_vcf`, `get_gnomad_v4_af_vcf` and `normalize_gnomad_v4_af_vcf`: native GRCh38 gnomAD v4.1 genomes sites reduced to INFO/AF (all FILTERs kept, records without AF dropped), as `genomes/{genome_build}/variation/gnomad.genomes.v4.1.af[.normalized].{genome_build}.vcf.gz`. `config["gnomad_v4_local_parts"]` points at per-chromosome parts already reduced this way instead of downloading. Existing outputs are unchanged.
+- Added `download_gnomad_v4_af_vcf`, `get_gnomad_v4_af_vcf` and `normalize_gnomad_v4_af_vcf`: native GRCh38 gnomAD v4.1 genomes sites reduced to INFO/AF (all FILTERs kept, records without AF or with AF 0 dropped), as `genomes/{genome_build}/variation/gnomad.genomes.v4.1.af[.normalized].{genome_build}.vcf.gz`. `config["gnomad_v4_local_parts"]` points at per-chromosome parts already reduced this way instead of downloading. Existing outputs are unchanged.
 
 ## [2.4] - 2020-07-28
 
