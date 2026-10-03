@@ -460,6 +460,43 @@ rule normalize_gnomad_v4_af_vcf:
         touch {output.vcf_index}
         """)
 
+rule get_gnomad_v2_af_vcf:
+    input:
+        vcf = get_download_file(rules.download_gnomad_v2_af_vcf.output.vcf),
+        fai = str(rules.index_genome_fasta.output.fai),
+        bed = str(rules.get_main_chromosomes_withY_download.output.bed)
+    output:
+        vcf = "genomes/{genome_build}/variation/gnomad.genomes.r2.1.1.af.{genome_build}.vcf.gz",
+        tmpfile = temp("genomes/{genome_build}/variation/gnomad.genomes.r2.1.1.af.{genome_build}.filtered.vcf.gz")
+    threads: 4
+    conda: CONDA_ENVS["bcftools"]
+    container: CONTAINER_ENVS["bcftools"]
+    shell:
+        op.as_one_line("""
+        grep -v '##contig' {input.vcf} |
+        bcftools view -T {input.bed} --threads {threads} -O z -o {output.tmpfile} &&
+        bcftools reheader --fai {input.fai} {output.tmpfile} -o {output.vcf} &&
+        bcftools index -t {output.vcf}
+        """)
+
+rule normalize_gnomad_v2_af_vcf:
+    input:
+        fasta = rules.get_genome_fasta_download.output.fasta,
+        vcf = str(rules.get_gnomad_v2_af_vcf.output.vcf)
+    output:
+        vcf = "genomes/{genome_build}/variation/gnomad.genomes.r2.1.1.af.normalized.{genome_build}.vcf.gz",
+        vcf_index = "genomes/{genome_build}/variation/gnomad.genomes.r2.1.1.af.normalized.{genome_build}.vcf.gz.tbi"
+    conda: CONDA_ENVS["bcftools"]
+    container: CONTAINER_ENVS["bcftools"]
+    shell:
+        op.as_one_line("""
+        bcftools view {input.vcf} | grep -v "_alt" | bcftools norm -m -any -f {input.fasta} | bgzip -c > {output.vcf}
+            &&
+        bcftools index -t {output.vcf}
+            &&
+        touch {output.vcf_index}
+        """)
+
 rule get_mutect2_pon:
     input:
         vcf = get_download_file(rules.download_mutect2_pon.output.vcf),
