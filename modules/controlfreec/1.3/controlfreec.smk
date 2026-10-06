@@ -379,7 +379,8 @@ def _controlfreec_get_contamination_line(wildcards):
 if CFG["options"]["count_cache"] and CFG["options"]["window"] == "":
     raise ValueError("controlfreec: count_cache requires options.window")
 _CFC_COUNT_STEP = CFG["options"]["step"] if CFG["options"]["step"] != "" else CFG["options"]["window"]
-_CFC_COUNT_CACHE = CFG["dirs"]["run"] + "count_cache/{seq_type}--{genome_build}/window" + str(CFG["options"]["window"]) + "_step" + str(_CFC_COUNT_STEP) + "/{sample_id}.bam"
+_CFC_COUNT_FLAGS = str(CFG["options"].get("count_exclude_flags", ""))
+_CFC_COUNT_CACHE = CFG["dirs"]["run"] + "count_cache/{seq_type}--{genome_build}/window" + str(CFG["options"]["window"]) + "_step" + str(_CFC_COUNT_STEP) + ("_F" + _CFC_COUNT_FLAGS if _CFC_COUNT_FLAGS else "") + "/{sample_id}.bam"
 # FREEC needs mateFile in [sample] even when mateCopyNumberFile is given; the .cpn takes priority.
 _CFC_CPN_LINE = "\\nmateCopyNumberFile = " if CFG["options"]["count_cache"] else ""
 
@@ -414,14 +415,22 @@ rule _controlfreec_count_cache:
         outdir = _CFC_COUNT_CACHE + "_freec/",
         chrFiles = CFG["dirs"]["inputs"] + "references/{genome_build}/chr/",
         window = CFG["options"]["window"],
-        step = _CFC_COUNT_STEP
+        step = _CFC_COUNT_STEP,
+        flags = _CFC_COUNT_FLAGS
     shell:
         """
         rm -rf {params.outdir} && mkdir -p {params.outdir}
+        SAMTOOLS=$(which samtools)
+        # FREEC reads the BAM through "<samtools> view -@ n <file>"; a wrapper adds -F to that call
+        if [ -n "{params.flags}" ]; then
+            printf '#!/bin/bash\nif [ "$1" = view ]; then shift; exec %s view -F %s "$@"; fi\nexec %s "$@"\n' $SAMTOOLS {params.flags} $SAMTOOLS > {params.outdir}samtools
+            chmod +x {params.outdir}samtools
+            SAMTOOLS={params.outdir}samtools
+        fi
         (
         echo "[general]"
         echo "maxThreads = {threads}"
-        echo "samtools = $(which samtools)"
+        echo "samtools = $SAMTOOLS"
         echo "chrLenFile = {input.chrLen}"
         echo "chrFiles = {params.chrFiles}"
         echo "window = {params.window}"
@@ -433,7 +442,7 @@ rule _controlfreec_count_cache:
         echo "mateOrientation = FR"
         ) > {params.outdir}config.txt
         # the .cpn is written right after counting; later unpaired steps are not needed
-        freec -conf {params.outdir}config.txt &> {log} || true
+        /usr/bin/time -v freec -conf {params.outdir}config.txt &> {log} || true
         mv {params.outdir}{wildcards.sample_id}.bam_sample.cpn {output.counts}
         rm -rf {params.outdir}
         """

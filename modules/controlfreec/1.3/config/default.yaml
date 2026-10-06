@@ -67,6 +67,8 @@ lcr-modules:
             window: "" # e.g. 100000
             # True: count each BAM once per window/step (FREEC .cpn) and have every run read the counts via mateCopyNumberFile; requires window
             count_cache: False
+            # count_cache only: SAM flags excluded at the count step (samtools view -F), e.g. 3328 = duplicate + secondary + supplementary; "" counts every record
+            count_exclude_flags: ""
 
             #BAF options:
             minimalCoveragePerPosition: 10 # for BAF: minimum position coverage default is 0
