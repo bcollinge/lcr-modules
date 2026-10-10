@@ -300,13 +300,48 @@ rule _controlfreec_input_bam:
         op.absolute_symlink(input.bai, output.bai)
         op.absolute_symlink(input.bai, output.crai)
 
+# cache_by_bam: the count cache and the mini-pileups are keyed by the source BAM (real path and
+# size) instead of {seq_type}, so every label reading the same BAM shares them; pileups are kept.
+import hashlib, os
+_CFC_BY_BAM = CFG["options"]["cache_by_bam"]
+_CFC_SRC_DIR = "bam--{genome_build}/{bam_key}/" if _CFC_BY_BAM else "{seq_type}--{genome_build}/"
+_CFC_BAM_BY_KEY = {}
+_CFC_KEY_CONSTRAINTS = {"genome_build": r"[^/]+", "bam_key": r"[^/]+"} if _CFC_BY_BAM else {}
+
+class _CfcWildcards(dict):
+    __getattr__ = dict.__getitem__
+
+def _cfc_bam_key(seq_type, genome_build, sample_id):
+    src = config["lcr-modules"]["controlfreec"]["inputs"]["sample_bam"]
+    w = _CfcWildcards(seq_type = seq_type, genome_build = genome_build, sample_id = sample_id)
+    path = os.path.realpath(src(w) if callable(src) else src.format(**w))
+    digest = hashlib.sha1((path + ":" + str(os.path.getsize(path))).encode()).hexdigest()[:12]
+    key = os.path.basename(path) + "_" + digest
+    _CFC_BAM_BY_KEY[key] = path
+    return key
+
+if _CFC_BY_BAM:
+    for _r in CFG["samples"].itertuples():
+        _cfc_bam_key(_r.seq_type, _r.genome_build, _r.sample_id)
+
+def _cfc_src_format(path, wildcards, id_wildcard):
+    keys = {"seq_type": wildcards.seq_type, "genome_build": wildcards.genome_build, "sample_id": wildcards[id_wildcard]}
+    if _CFC_BY_BAM:
+        keys["bam_key"] = _cfc_bam_key(**keys)
+    return path.format(**keys)
+
+def _cfc_source_bam(wildcards):
+    return ancient(_CFC_BAM_BY_KEY[wildcards.bam_key])
+
 rule _controlfreec_mpileup_per_chrom:
     input:
-        bam = str(rules._controlfreec_input_bam.output.bam),
+        bam = _cfc_source_bam if _CFC_BY_BAM else str(rules._controlfreec_input_bam.output.bam),
         fastaFile = reference_files("genomes/{genome_build}/genome_fasta/genome.fa"),
-        bed = str(rules._controlfreec_dbsnp_to_bed.output.bed)
+        bed = ancient(str(rules._controlfreec_dbsnp_to_bed.output.bed)) if _CFC_BY_BAM else str(rules._controlfreec_dbsnp_to_bed.output.bed)
     output:
-        pileup = temp(CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{sample_id}.{chrom}.minipileup.pileup.gz")
+        pileup = temp(CFG["dirs"]["mpileup"] + _CFC_SRC_DIR + "{sample_id}.{chrom}.minipileup.pileup.gz")
+    wildcard_constraints:
+        **_CFC_KEY_CONSTRAINTS
     conda:
         CFG["conda_envs"]["controlfreec"]
     container:
@@ -316,7 +351,7 @@ rule _controlfreec_mpileup_per_chrom:
         **CFG["resources"]["mpileup"]
     group: "mpileup_controlfreec"
     log:
-        stderr = CFG["logs"]["inputs"] + "mpileup/{seq_type}--{genome_build}/{sample_id}.{chrom}.mpileup.stderr.log",
+        stderr = CFG["logs"]["inputs"] + "mpileup/" + _CFC_SRC_DIR + "{sample_id}.{chrom}.mpileup.stderr.log",
     shell:
         "samtools mpileup -l {input.bed} -r {wildcards.chrom} -Q 20 -f {input.fastaFile} {input.bam} | gzip -c > {output.pileup} 2> {log.stderr}"
 
@@ -338,7 +373,9 @@ rule _controlfreec_concatenate_pileups:
         mpileup = _get_chr_mpileups,
         main = reference_files("genomes/{genome_build}/genome_fasta/main_chromosomes_withY.txt")
     output:
-        mpileup = temp(CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{sample_id}.bam_minipileup.pileup.gz")
+        mpileup = (CFG["dirs"]["mpileup"] + _CFC_SRC_DIR + "{sample_id}.bam_minipileup.pileup.gz") if _CFC_BY_BAM else temp(CFG["dirs"]["mpileup"] + _CFC_SRC_DIR + "{sample_id}.bam_minipileup.pileup.gz")
+    wildcard_constraints:
+        **_CFC_KEY_CONSTRAINTS
     threads: 1
     resources:
         **CFG["resources"]["cat"]
@@ -380,40 +417,53 @@ if CFG["options"]["count_cache"] and CFG["options"]["window"] == "":
     raise ValueError("controlfreec: count_cache requires options.window")
 _CFC_COUNT_STEP = CFG["options"]["step"] if CFG["options"]["step"] != "" else CFG["options"]["window"]
 _CFC_COUNT_FLAGS = str(CFG["options"].get("count_exclude_flags", ""))
-_CFC_COUNT_CACHE = CFG["dirs"]["run"] + "count_cache/{seq_type}--{genome_build}/window" + str(CFG["options"]["window"]) + "_step" + str(_CFC_COUNT_STEP) + ("_F" + _CFC_COUNT_FLAGS if _CFC_COUNT_FLAGS else "") + "/{sample_id}.bam"
+_CFC_COUNT_CACHE = CFG["dirs"]["run"] + "count_cache/" + _CFC_SRC_DIR + "window" + str(CFG["options"]["window"]) + "_step" + str(_CFC_COUNT_STEP) + ("_F" + _CFC_COUNT_FLAGS if _CFC_COUNT_FLAGS else "") + "/{sample_id}.bam"
 # FREEC needs mateFile in [sample] even when mateCopyNumberFile is given; the .cpn takes priority.
 _CFC_CPN_LINE = "\\nmateCopyNumberFile = " if CFG["options"]["count_cache"] else ""
 
 # baf: False drops the mini-pileups, the miniPileup lines and the [BAF] section; FREEC then writes no _BAF.txt
 _CFC_BAF = CFG["options"]["baf"]
+_CFC_PILEUP_FILE = CFG["dirs"]["mpileup"] + _CFC_SRC_DIR + "{sample_id}.bam_minipileup.pileup.gz"
+
+def _controlfreec_pileup_input(id_wildcard):
+    def _get(wildcards):
+        return _cfc_src_format(_CFC_PILEUP_FILE, wildcards, id_wildcard)
+    return _get
+
 _CFC_PILEUPS = {
-    "tumour_pileup": CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{tumour_id}.bam_minipileup.pileup.gz",
-    "normal_pileup": CFG["dirs"]["mpileup"] + "{seq_type}--{genome_build}/{normal_id}.bam_minipileup.pileup.gz"
+    "tumour_pileup": _controlfreec_pileup_input("tumour_id"),
+    "normal_pileup": _controlfreec_pileup_input("normal_id")
 } if _CFC_BAF else {}
+
+def _controlfreec_pileup_file(seq_type, genome_build, sample_id):
+    w = _CfcWildcards(seq_type = seq_type, genome_build = genome_build, sample_id = sample_id)
+    return _cfc_src_format(_CFC_PILEUP_FILE, w, "sample_id")
 _CFC_BAF_DROP = "" if _CFC_BAF else "/^miniPileup = /d; /^\\[BAF\\]/,$d"
 
 def _controlfreec_pileup_path(key):
     def _get(wildcards):
-        return _CFC_PILEUPS[key].format(**wildcards) if _CFC_BAF else ""
+        return _CFC_PILEUPS[key](wildcards) if _CFC_BAF else ""
     return _get
 
 def _controlfreec_reads_input(id_wildcard):
     def _get(wildcards):
         CFG = config["lcr-modules"]["controlfreec"]
         if CFG["options"]["count_cache"]:
-            path = _CFC_COUNT_CACHE
-        else:
-            path = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{sample_id}.bam"
+            return _cfc_src_format(_CFC_COUNT_CACHE, wildcards, id_wildcard)
+        path = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{sample_id}.bam"
         return path.format(seq_type = wildcards.seq_type, genome_build = wildcards.genome_build, sample_id = wildcards[id_wildcard])
     return _get
 
+# cache_by_bam: reference inputs are ancient, as the shared cache outlives any one label
 rule _controlfreec_count_cache:
     input:
-        bam = CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{sample_id}.bam",
-        chrLen = str(rules._controlfreec_generate_chrLen.output.chrLen),
-        done = str(rules._controlfreec_check_chrFiles.output)
+        bam = _cfc_source_bam if _CFC_BY_BAM else CFG["dirs"]["inputs"] + "{seq_type}--{genome_build}/{sample_id}.bam",
+        chrLen = ancient(str(rules._controlfreec_generate_chrLen.output.chrLen)) if _CFC_BY_BAM else str(rules._controlfreec_generate_chrLen.output.chrLen),
+        done = ancient(str(rules._controlfreec_check_chrFiles.output)) if _CFC_BY_BAM else str(rules._controlfreec_check_chrFiles.output)
     output:
         counts = _CFC_COUNT_CACHE
+    wildcard_constraints:
+        **_CFC_KEY_CONSTRAINTS
     conda:
         CFG["conda_envs"]["controlfreec"]
     container:
@@ -440,6 +490,12 @@ rule _controlfreec_count_cache:
             chmod +x {params.outdir}samtools
             SAMTOOLS={params.outdir}samtools
         fi
+        # FREEC names the .cpn after the mateFile basename
+        MATE=$(realpath -s {input.bam})
+        if [ "$(basename $MATE)" != "{wildcards.sample_id}.bam" ]; then
+            ln -s "$MATE" {params.outdir}{wildcards.sample_id}.bam
+            MATE={params.outdir}{wildcards.sample_id}.bam
+        fi
         (
         echo "[general]"
         echo "maxThreads = {threads}"
@@ -450,7 +506,7 @@ rule _controlfreec_count_cache:
         echo "step = {params.step}"
         echo "outputDir = {params.outdir}"
         echo "[sample]"
-        echo "mateFile = $(realpath -s {input.bam})"
+        echo "mateFile = $MATE"
         echo "inputFormat = BAM"
         echo "mateOrientation = FR"
         ) > {params.outdir}config.txt

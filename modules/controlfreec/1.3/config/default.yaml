@@ -69,6 +69,8 @@ lcr-modules:
             count_cache: False
             # count_cache only: SAM flags excluded at the count step (samtools view -F), e.g. 3328 = duplicate + secondary + supplementary; "" counts every record
             count_exclude_flags: ""
+            # True: the count cache and the mini-pileups are keyed by the source BAM (real path and size) instead of the seq_type label, so a new label reuses them; pileups are kept, not temp
+            cache_by_bam: False
 
             #BAF options:
             # False: no mini-pileups and no [BAF] section, so no _BAF.txt, BAF plot or CNVs.seg / projections (cnv2igv needs the genotype columns)

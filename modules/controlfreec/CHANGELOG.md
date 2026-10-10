@@ -97,3 +97,10 @@ Authored by Sierra Gillis
   `miniPileup` lines and the `[BAF]` section from config_WGS.txt, so no pileup jobs run and FREEC
   writes no _BAF.txt; the BAF plot, CNVs.seg and seg projections are not built (cnv2igv reads the
   genotype and somatic/germline columns FREEC writes only with BAF). Count cache paths are unchanged.
+- `options.cache_by_bam` (default False, unchanged behaviour). True keys the count cache and the
+  mini-pileups by the source BAM (real path and size) under `count_cache/bam--{genome_build}/<key>/`
+  and `01-mpileup/bam--{genome_build}/<key>/`, read straight from the source BAM rather than the
+  per-label `00-inputs` link, so a new seq_type label reuses counts and pileups instead of
+  recomputing them. Concatenated pileups are then kept (a temp file shared across labels could be
+  deleted under another label's driver). `_controlfreec_pileup_file(seq_type, genome_build, sample_id)`
+  returns a sample's pileup path in either mode.
