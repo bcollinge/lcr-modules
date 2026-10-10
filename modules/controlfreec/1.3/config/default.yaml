@@ -71,6 +71,8 @@ lcr-modules:
             count_exclude_flags: ""
 
             #BAF options:
+            # False: no mini-pileups and no [BAF] section, so no _BAF.txt, BAF plot or CNVs.seg / projections (cnv2igv needs the genotype columns)
+            baf: True
             minimalCoveragePerPosition: 10 # for BAF: minimum position coverage default is 0
             minQualityPerPosition: 20 # for BAF: minimum base quality
             shiftInQuality: 0 # basis for Phred quality

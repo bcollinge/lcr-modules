@@ -90,3 +90,10 @@ Authored by Sierra Gillis
   the sole `mateFile`, so FREEC counted only reads starting on a common SNP position; fine at
   30x, but at low-pass depth it inflated the auto window to several Mb and crashed. sambamba
   is no longer referenced. CRAM inputs need a resolvable reference (header UR or REF_PATH).
+
+## [1.3] - 2026-10-09
+
+- `options.baf` (default True, unchanged behaviour). False drops the mini-pileup inputs, the
+  `miniPileup` lines and the `[BAF]` section from config_WGS.txt, so no pileup jobs run and FREEC
+  writes no _BAF.txt; the BAF plot, CNVs.seg and seg projections are not built (cnv2igv reads the
+  genotype and somatic/germline columns FREEC writes only with BAF). Count cache paths are unchanged.
