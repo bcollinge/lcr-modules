@@ -27,6 +27,8 @@ lcr-modules:
       maf2maf: "--cache-version 100 --species homo_sapiens --retain-cols gnomAD_AF,gnomADg_AF,blacklist_count"
       species: "homo_sapiens"
       gnomAD_cutoff: 0.001 # cut-off to be used for AF frequency of germline variants in gnomAD
+      gnomad_callside: False # True: gnomADg_AF is looked up for a split, left-aligned copy of the calls (src/gnomad_lookup.sh, bcftools 1.17) and written back onto the original records, 0 when absent
+      gnomad_atomize: False # with gnomad_callside: MNVs are also split into SNVs in the copy (bcftools norm -a); an MNV gets the max AF over its bases
       target_builds: ["hg38", "grch38", "hg19", "grch37"] # Target genome builds for chr-prefixing and CrossMap
       reference_config: "__UPDATE__" # Path to the reference workflow config file. Usef to handle reference genome builds;
       augment: False # Whether or not mafs should be augmented with variants from tumours from the same patient
@@ -47,10 +49,12 @@ lcr-modules:
       vcf2maf: "{MODSDIR}/envs/vcf2maf-1.6.18.yaml"
       crossmap: "{SCRIPTSDIR}/crossmap/1.1/convert_maf_coords.yaml"
       bcftools: "{MODSDIR}/envs/bcftools-1.10.2.yaml"
+      bcftools_lookup: "{MODSDIR}/envs/bcftools-1.17.yaml"
       pysam: "{MODSDIR}/envs/pysam-0.18.0.yaml"
       gamblr: "{MODSDIR}/envs/gamblr.yaml"
     container_envs:
       bcftools: "docker://quay.io/biocontainers/bcftools:1.10.2--h4f4756c_3"
+      bcftools_lookup: "docker://quay.io/biocontainers/bcftools:1.17--haef29d1_0"
       crossmap: "docker://quay.io/biocontainers/crossmap:0.7.0--pyhdfd78af_0"
       gamblr: null
       pysam: null
