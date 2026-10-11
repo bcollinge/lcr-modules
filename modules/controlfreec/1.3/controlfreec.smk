@@ -421,8 +421,6 @@ _CFC_COUNT_CACHE = CFG["dirs"]["run"] + "count_cache/" + _CFC_SRC_DIR + "window"
 # FREEC needs mateFile in [sample] even when mateCopyNumberFile is given; the .cpn takes priority.
 _CFC_CPN_LINE = "\\nmateCopyNumberFile = " if CFG["options"]["count_cache"] else ""
 
-# baf: False drops the mini-pileups, the miniPileup lines and the [BAF] section; FREEC then writes no _BAF.txt
-_CFC_BAF = CFG["options"]["baf"]
 _CFC_PILEUP_FILE = CFG["dirs"]["mpileup"] + _CFC_SRC_DIR + "{sample_id}.bam_minipileup.pileup.gz"
 
 def _controlfreec_pileup_input(id_wildcard):
@@ -433,17 +431,11 @@ def _controlfreec_pileup_input(id_wildcard):
 _CFC_PILEUPS = {
     "tumour_pileup": _controlfreec_pileup_input("tumour_id"),
     "normal_pileup": _controlfreec_pileup_input("normal_id")
-} if _CFC_BAF else {}
+}
 
 def _controlfreec_pileup_file(seq_type, genome_build, sample_id):
     w = _CfcWildcards(seq_type = seq_type, genome_build = genome_build, sample_id = sample_id)
     return _cfc_src_format(_CFC_PILEUP_FILE, w, "sample_id")
-_CFC_BAF_DROP = "" if _CFC_BAF else "/^miniPileup = /d; /^\\[BAF\\]/,$d"
-
-def _controlfreec_pileup_path(key):
-    def _get(wildcards):
-        return _CFC_PILEUPS[key](wildcards) if _CFC_BAF else ""
-    return _get
 
 def _controlfreec_reads_input(id_wildcard):
     def _get(wildcards):
@@ -537,9 +529,6 @@ rule _controlfreec_config_contamAdjTrue:
     params:
         config = CFG["options"]["configFile"],
         cpn_line = _CFC_CPN_LINE,
-        tumour_pileup = _controlfreec_pileup_path("tumour_pileup"),
-        normal_pileup = _controlfreec_pileup_path("normal_pileup"),
-        baf_drop = _CFC_BAF_DROP,
         window = _controlfreec_get_optional_window,
         step = _controlfreec_get_optional_step,
         booCon = "TRUE",
@@ -576,8 +565,8 @@ rule _controlfreec_config_contamAdjTrue:
         "sed \"s|^mateFile = CONTROLFILE|mateFile = CONTROLFILE$nc|\" | "
         "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" | "
         "sed \"s|CONTROLFILE|$(realpath -s {input.normal_bam})|g\" | "
-        "sed \"s|TUMOURPILEUP|{params.tumour_pileup}|g\" | "
-        "sed \"s|CONTROLPILEUP|{params.normal_pileup}|g\" | "
+        "sed \"s|TUMOURPILEUP|{input.tumour_pileup}|g\" | "
+        "sed \"s|CONTROLPILEUP|{input.normal_pileup}|g\" | "
         "sed \"s|OUTDIR|{params.outdir}|g\" | "
         "sed \"s|DBsnpFile|{input.dbsnp}|g\" | "
         "sed \"s|phredQuality|{params.shiftInQuality}|g\" | "
@@ -608,8 +597,7 @@ rule _controlfreec_config_contamAdjTrue:
         "sed \"s|uniqBoo|{params.uniqBoo}|g\" | "
         "sed \"s|naBoo|{params.naBoo}|g\" | "
         "sed \"s|numThreads|{params.threads}|g\" | "
-        "sed \"s|referenceFile|{input.mappability}|g\" | "
-        "sed '{params.baf_drop}' > {output.config}"
+        "sed \"s|referenceFile|{input.mappability}|g\" > {output.config}"
 
 
 rule _controlfreec_config_contamAdjFalse:
@@ -633,9 +621,6 @@ rule _controlfreec_config_contamAdjFalse:
     params:
         config = CFG["options"]["configFile"],
         cpn_line = _CFC_CPN_LINE,
-        tumour_pileup = _controlfreec_pileup_path("tumour_pileup"),
-        normal_pileup = _controlfreec_pileup_path("normal_pileup"),
-        baf_drop = _CFC_BAF_DROP,
         window = _controlfreec_get_optional_window,
         step = _controlfreec_get_optional_step,
         booCon = "FALSE",
@@ -672,8 +657,8 @@ rule _controlfreec_config_contamAdjFalse:
         "sed \"s|^mateFile = CONTROLFILE|mateFile = CONTROLFILE$nc|\" | "
         "sed \"s|BAMFILE|$(realpath -s {input.tumour_bam})|g\" | "
         "sed \"s|CONTROLFILE|$(realpath -s {input.normal_bam})|g\" | "
-        "sed \"s|TUMOURPILEUP|{params.tumour_pileup}|g\" | "
-        "sed \"s|CONTROLPILEUP|{params.normal_pileup}|g\" | "
+        "sed \"s|TUMOURPILEUP|{input.tumour_pileup}|g\" | "
+        "sed \"s|CONTROLPILEUP|{input.normal_pileup}|g\" | "
         "sed \"s|OUTDIR|{params.outdir}|g\" | "
         "sed \"s|DBsnpFile|{input.dbsnp}|g\" | "
         "sed \"s|phredQuality|{params.shiftInQuality}|g\" | "
@@ -704,8 +689,7 @@ rule _controlfreec_config_contamAdjFalse:
         "sed \"s|uniqBoo|{params.uniqBoo}|g\" | "
         "sed \"s|naBoo|{params.naBoo}|g\" | "
         "sed \"s|numThreads|{params.threads}|g\" | "
-        "sed \"s|referenceFile|{input.mappability}|g\" | "
-        "sed '{params.baf_drop}' > {output.config}"
+        "sed \"s|referenceFile|{input.mappability}|g\" > {output.config}"
 
 # contamination_mode "estimate": contamAdj = True first, contamAdj = False if that fails;
 # "supplied": contamAdj = True with the config contamination value, no fallback;
@@ -771,8 +755,6 @@ def _get_run_result(wildcards):
             "CNV":base_dir + "/contamAdjFalse/{tumour_id}.bam_CNVs",
             "BAF":base_dir + "/contamAdjFalse/{tumour_id}.bam_BAF.txt"
         }
-    if not _CFC_BAF:
-        del files["BAF"]
     return files
 
 rule _controlfreec_symlink_run_result:
@@ -782,7 +764,7 @@ rule _controlfreec_symlink_run_result:
         info = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_info.txt",
         ratios = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_ratio.txt",
         CNV = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_CNVs",
-        **({"BAF": CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_BAF.txt"} if _CFC_BAF else {}),
+        BAF = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_BAF.txt",
         branch = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.contam_branch.txt"
     params:
         mode = CFG["options"]["contamination_mode"],
@@ -791,8 +773,7 @@ rule _controlfreec_symlink_run_result:
         op.relative_symlink(input.info, output.info, in_module = True)
         op.relative_symlink(input.ratios, output.ratios, in_module = True)
         op.relative_symlink(input.CNV, output.CNV, in_module = True)
-        if _CFC_BAF:
-            op.relative_symlink(input.BAF, output.BAF, in_module = True)
+        op.relative_symlink(input.BAF, output.BAF, in_module = True)
         branch = os.path.basename(os.path.dirname(input.info))
         with open(output.branch, "w") as f:
             f.write("contam_adj_branch\tcontamination_mode\tcontamination\n")
@@ -803,7 +784,7 @@ rule _controlfreec_calc_sig:
         info = str(rules._controlfreec_symlink_run_result.output.info),
         ratios = str(rules._controlfreec_symlink_run_result.output.ratios),
         CNV = str(rules._controlfreec_symlink_run_result.output.CNV),
-        **({"BAF": str(rules._controlfreec_symlink_run_result.output.BAF)} if _CFC_BAF else {})
+        BAF = str(rules._controlfreec_symlink_run_result.output.BAF)
     output:
         txt = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_CNVs.p.value.txt"
     params:
@@ -827,11 +808,11 @@ rule _controlfreec_plot:
         info = str(rules._controlfreec_symlink_run_result.output.info),
         ratios = str(rules._controlfreec_symlink_run_result.output.ratios),
         CNV = str(rules._controlfreec_symlink_run_result.output.CNV),
-        **({"BAF": str(rules._controlfreec_symlink_run_result.output.BAF)} if _CFC_BAF else {})
+        BAF = str(rules._controlfreec_symlink_run_result.output.BAF)
     output:
         plot = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_ratio.txt.png",
         log2plot = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_ratio.txt.log2.png",
-        **({"bafplot": CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_BAF.txt.png"} if _CFC_BAF else {})
+        bafplot = CFG["dirs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bam_BAF.txt.png"
     params:
         plot = CFG["software"]["FREEC_graph"]
     threads: 1
@@ -844,7 +825,7 @@ rule _controlfreec_plot:
     log:
         CFG["logs"]["calc_sig_and_plot"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/plot.log"
     shell:
-        "Rscript --vanilla {params.plot} `grep \"Output_Ploidy\" {input.info} | cut -f 2` {input.ratios}" + (" {input.BAF}" if _CFC_BAF else "") + " &> {log}"
+        "Rscript --vanilla {params.plot} `grep \"Output_Ploidy\" {input.info} | cut -f 2` {input.ratios} {input.BAF} &> {log}"
 
 
 rule _controlfreec_freec2bed:
@@ -852,7 +833,7 @@ rule _controlfreec_freec2bed:
         info = str(rules._controlfreec_symlink_run_result.output.info),
         ratios = str(rules._controlfreec_symlink_run_result.output.ratios),
         CNV = str(rules._controlfreec_symlink_run_result.output.CNV),
-        **({"BAF": str(rules._controlfreec_symlink_run_result.output.BAF)} if _CFC_BAF else {})
+        BAF = str(rules._controlfreec_symlink_run_result.output.BAF)
     output:
         bed = CFG["dirs"]["freec2bed"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.bed"
     params:
@@ -877,7 +858,7 @@ rule _controlfreec_freec2circos:
         info = str(rules._controlfreec_symlink_run_result.output.info),
         ratios = str(rules._controlfreec_symlink_run_result.output.ratios),
         CNV = str(rules._controlfreec_symlink_run_result.output.CNV),
-        **({"BAF": str(rules._controlfreec_symlink_run_result.output.BAF)} if _CFC_BAF else {})
+        BAF = str(rules._controlfreec_symlink_run_result.output.BAF)
     output:
         circos = CFG["dirs"]["freec2circos"] + "{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}.circos.bed"
     params:
@@ -1063,7 +1044,8 @@ rule _controlfreec_output:
         log2plot = str(rules._controlfreec_plot.output.log2plot),
         CNV = str(rules._controlfreec_calc_sig.output.txt),
         bed = str(rules._controlfreec_freec2bed.output.bed),
-        **({"BAFgraph": str(rules._controlfreec_plot.output.bafplot), "igv": str(rules._controlfreec_cnv2igv.output.seg)} if _CFC_BAF else {}),
+        BAFgraph = str(rules._controlfreec_plot.output.bafplot),
+        igv = str(rules._controlfreec_cnv2igv.output.seg),
         circos = str(rules._controlfreec_freec2circos.output.circos),
         branch = str(rules._controlfreec_symlink_run_result.output.branch)
     output:
@@ -1071,8 +1053,8 @@ rule _controlfreec_output:
         log2plot = CFG["dirs"]["outputs"] + "png/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.ratio.log2.png",
         CNV = CFG["dirs"]["outputs"] + "txt/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.CNVs.txt",
         bed = CFG["dirs"]["outputs"] + "bed/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.CNVs.bed",
-        **({"BAFgraph": CFG["dirs"]["outputs"] + "png/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.BAF.png",
-            "igv": CFG["dirs"]["outputs"] + "seg/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.CNVs.seg"} if _CFC_BAF else {}),
+        BAFgraph = CFG["dirs"]["outputs"] + "png/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.BAF.png",
+        igv = CFG["dirs"]["outputs"] + "seg/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.CNVs.seg",
         circos = CFG["dirs"]["outputs"] + "bed/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.circos.bed",
         branch = CFG["dirs"]["outputs"] + "txt/{seq_type}--{genome_build}/{masked}/{tumour_id}--{normal_id}--{pair_status}.contam_branch.txt"
     run:
@@ -1080,9 +1062,8 @@ rule _controlfreec_output:
         op.relative_symlink(input.log2plot, output.log2plot, in_module = True)
         op.relative_symlink(input.CNV, output.CNV, in_module = True)
         op.relative_symlink(input.bed, output.bed, in_module = True)
-        if _CFC_BAF:
-            op.relative_symlink(input.BAFgraph, output.BAFgraph, in_module = True)
-            op.relative_symlink(input.igv, output.igv, in_module = True)
+        op.relative_symlink(input.BAFgraph, output.BAFgraph, in_module = True)
+        op.relative_symlink(input.igv, output.igv, in_module = True)
         op.relative_symlink(input.circos, output.circos, in_module = True)
         op.relative_symlink(input.branch, output.branch, in_module = True)
 
@@ -1097,9 +1078,9 @@ rule _controlfreec_all:
                 str(rules._controlfreec_output.output.log2plot),
                 str(rules._controlfreec_output.output.CNV),
                 str(rules._controlfreec_output.output.bed),
-                *([str(rules._controlfreec_output.output.BAFgraph)] if _CFC_BAF else []),
+                str(rules._controlfreec_output.output.BAFgraph),
                 str(rules._controlfreec_output.output.circos),
-                *([str(rules._controlfreec_output.output.igv)] if _CFC_BAF else []),
+                str(rules._controlfreec_output.output.igv),
                 str(rules._controlfreec_output.output.branch),
                 str(rules._controlfreec_run.output.done)
             ],
@@ -1113,7 +1094,6 @@ rule _controlfreec_all:
             ),
          masked=CFG["options"].get("masked_arms") or ["masked", "unmasked"]
         ),
-        # cnv2igv reads the genotype and somatic/germline columns, which FREEC writes only with BAF
         expand(
             expand(
                 [
@@ -1129,7 +1109,7 @@ rule _controlfreec_all:
         tool="controlfreec",
         masked=CFG["options"].get("masked_arms") or ["masked", "unmasked"],
         projection=CFG["requested_projections"]
-        ) if _CFC_BAF else []
+        )
 
 
 
