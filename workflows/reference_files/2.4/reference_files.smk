@@ -550,7 +550,7 @@ rule join_gnomad_af_vcf:
     container: CONTAINER_ENVS["bcftools"]
     shell:
         op.as_one_line("""
-        bcftools view {input.vcf} | grep -v "_alt" | bcftools annotate -x '^INFO/AF' |
+        bcftools view {input.vcf} | grep -v "_alt" |
         bcftools norm -m +any -f {input.fasta} --threads {threads} -Oz -o {output.vcf}
             &&
         bcftools index -t {output.vcf}
