@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0] - 2026-10-02
 
 - The gnomAD VCF used by the Strelka, LoFreq and SAGE gnomAD filters is set per genome build with `options.gnomad_resource` (a stem under `genomes/{genome_build}/variation/`); builds not listed keep `af-only-gnomad`.
+- `options.gnomad_callside` (default False): the Strelka, LoFreq and SAGE gnomAD filters look up a split, left-aligned copy of the calls (`src/gnomad_lookup.sh`, new rule `_slms_3_gnomad_lookup` in a bcftools 1.17 env) by exact allele in the resource and write INFO/AF back onto the original records (0 when absent); `options.gnomad_atomize` also splits MNVs in the copy (`bcftools norm -a`), giving an MNV the max AF over its bases. Off, the filters run the previous command unchanged.
 
 ## [1.0] - 2021-01-11
 

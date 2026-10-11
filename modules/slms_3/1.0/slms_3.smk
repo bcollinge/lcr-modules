@@ -43,7 +43,9 @@ if version.parse(current_version) < version.parse(min_oncopipe_version):
 CFG_SLMS3 = op.setup_module(
     name = "slms_3",
     version = "1.0",
-    subdirectories = ["inputs", "strelka_gnomad", "lofreq_gnomad", "strelka_lofreq_union", "sage_gnomad", "mutect2_depth_filt", "union", "outputs"],
+    subdirectories = ["inputs", "strelka_gnomad", "lofreq_gnomad", "strelka_lofreq_union", "sage_gnomad", "mutect2_depth_filt", "union"]
+        + (["gnomad_lookup"] if config["lcr-modules"]["slms_3"].get("options", {}).get("gnomad_callside", False) else [])
+        + ["outputs"],
 )
 
 # Ensure each of the submodule versions meets requirements. 
@@ -148,18 +150,76 @@ def _slms_3_gnomad(wildcards, stems=dict(CFG_SLMS3["options"].get("gnomad_resour
     stem = stems.get(wildcards.genome_build, "af-only-gnomad")
     return reference_files(f"genomes/{wildcards.genome_build}/variation/{stem}.{wildcards.genome_build}.vcf.gz")
 
+_SLMS3_CALLSIDE = CFG_SLMS3["options"].get("gnomad_callside", False)
+
+# Call-side lookup (options.gnomad_callside): a split, left-aligned copy of the caller VCF (MNVs also split with
+# options.gnomad_atomize) is looked up by exact allele in the normalized resource; INFO/AF is written back onto the
+# original records, 0 when absent.
+def _slms_3_lookup_vcf(wildcards):
+    return {"strelka": str(rules._slms_3_input_strelka_vcf.output.vcf),
+            "lofreq": str(rules._slms_3_input_lofreq_vcf.output.vcf),
+            "sage": str(rules._slms_3_input_sage_vcf.output.vcf)}[wildcards.caller]
+
+if _SLMS3_CALLSIDE:
+    rule _slms_3_gnomad_lookup:
+        input:
+            vcf = _slms_3_lookup_vcf,
+            gnomad = _slms_3_gnomad,
+            fasta = reference_files("genomes/{genome_build}/genome_fasta/genome.fa")
+        output:
+            vcf = temp(CFG_SLMS3["dirs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_af.vcf")
+        log:
+            stderr = CFG_SLMS3["logs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_lookup.stderr.log"
+        wildcard_constraints:
+            caller = "strelka|lofreq|sage"
+        params:
+            script = CFG_SLMS3["inputs"]["gnomad_lookup"],
+            atomize = int(bool(CFG_SLMS3["options"].get("gnomad_atomize", False)))
+        conda:
+            CFG_SLMS3["conda_envs"]["bcftools_lookup"]
+        container:
+            CFG_SLMS3["container_envs"]["bcftools_lookup"]
+        threads:
+            CFG_SLMS3["threads"]["gnomad_lookup"]
+        resources:
+            **CFG_SLMS3["resources"]["gnomad_lookup"]
+        shell:
+            op.as_one_line("""
+            bash {params.script} {input.vcf} {input.fasta} {input.gnomad} AF {params.atomize} {output.vcf}.tmp
+            > {output.vcf} 2> {log.stderr}
+            """)
+
+def _slms_3_af_input(caller):
+    def _f(wildcards):
+        if not _SLMS3_CALLSIDE:
+            return []
+        return expand(str(rules._slms_3_gnomad_lookup.output.vcf), caller = caller, **dict(wildcards.items()))
+    return _f
+
+# Writes the caller VCF with INFO/AF from the resource on stdout (AF=0 when absent).
+def _slms_3_af_cmd(caller):
+    def _f(wildcards, input, threads):
+        if _SLMS3_CALLSIDE:
+            return f"bcftools view {input.af}"
+        return (f"bcftools annotate --threads {threads} -a {input.gnomad} -c INFO/AF {input.vcf} | "
+                "awk 'BEGIN {FS=OFS=\"\\t\"} { if ($1 !~ /^#/ && $8 !~ \";AF=\") $8=$8\";AF=0\"; print $0; }'")
+    return _f
+
 # Annotate Strelka VCF and remove common GnomAD variants
 
 rule _slms_3_annotate_strelka_gnomad:
     input:
         vcf = str(rules._slms_3_input_strelka_vcf.output.vcf),
         tbi = str(rules._slms_3_input_strelka_vcf.output.tbi),
-        gnomad = _slms_3_gnomad
+        gnomad = _slms_3_gnomad,
+        af = _slms_3_af_input("strelka")
     output:
         vcf = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz.tbi"
     log:
         stderr = CFG_SLMS3["logs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka_gnomad.stderr.log"
+    params:
+        af_cmd = _slms_3_af_cmd("strelka")
     conda:
         CFG_SLMS3["conda_envs"]["bcftools"]
     container:
@@ -170,9 +230,7 @@ rule _slms_3_annotate_strelka_gnomad:
         **CFG_SLMS3["resources"]["strelka_gnomad"]
     shell:
         op.as_one_line("""
-        bcftools annotate --threads {threads} 
-        -a {input.gnomad} -c INFO/AF {input.vcf} | 
-        awk 'BEGIN {{FS=OFS="\\t"}} {{ if ($1 !~ /^#/ && $8 !~ ";AF=") $8=$8";AF=0"; print $0; }}' | 
+        {params.af_cmd} | 
         bcftools view -i 'INFO/AF < 0.0001 && INFO/SomaticEVS >= 10 && FMT/DP[1] >= 10' -Oz -o {output.vcf} 2> {log.stderr}
         && 
         tabix -p vcf {output.vcf} 2>> {log.stderr}
@@ -185,12 +243,15 @@ rule _slms_3_annotate_lofreq_gnomad:
     input: 
         vcf = str(rules._slms_3_input_lofreq_vcf.output.vcf), 
         tbi = str(rules._slms_3_input_lofreq_vcf.output.tbi),
-        gnomad = _slms_3_gnomad
+        gnomad = _slms_3_gnomad,
+        af = _slms_3_af_input("lofreq")
     output: 
         vcf = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz.tbi"
     log:
         stderr = CFG_SLMS3["logs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq_gnomad.stderr.log"
+    params:
+        af_cmd = _slms_3_af_cmd("lofreq")
     conda:
         CFG_SLMS3["conda_envs"]["bcftools"]
     container:
@@ -201,9 +262,7 @@ rule _slms_3_annotate_lofreq_gnomad:
         CFG_SLMS3["threads"]["lofreq_gnomad"]
     shell: 
         op.as_one_line("""
-        bcftools annotate --threads {threads} 
-        -a {input.gnomad} -c INFO/AF {input.vcf} | 
-        awk 'BEGIN {{FS=OFS="\\t"}} {{ if ($1 !~ /^#/ && $8 !~ ";AF=") $8=$8";AF=0"; print $0; }}' | 
+        {params.af_cmd} | 
         bcftools view -i 'INFO/AF < 0.0001' -Oz -o {output.vcf} 2> {log.stderr}
         && 
         tabix -p vcf {output.vcf} 2>> {log.stderr}
@@ -241,12 +300,15 @@ rule _slms_3_strelka_lofreq_union:
 rule _slms_3_annotate_sage_gnomad: 
     input: 
         vcf = str(rules._slms_3_input_sage_vcf.output.vcf), 
-        gnomad = _slms_3_gnomad
+        gnomad = _slms_3_gnomad,
+        af = _slms_3_af_input("sage")
     output: 
         vcf = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz.tbi"
     log:
         stderr = CFG_SLMS3["logs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka_lofreq_union_gnomad.stderr.log"
+    params:
+        af_cmd = _slms_3_af_cmd("sage")
     conda:
         CFG_SLMS3["conda_envs"]["bcftools"]
     container:
@@ -257,9 +319,7 @@ rule _slms_3_annotate_sage_gnomad:
         CFG_SLMS3["threads"]["sage_gnomad"]
     shell: 
         op.as_one_line("""
-        bcftools annotate --threads {threads} 
-        -a {input.gnomad} -c INFO/AF {input.vcf} | 
-        awk 'BEGIN {{FS=OFS="\\t"}} {{ if ($1 !~ /^#/ && $8 !~ ";AF=") $8=$8";AF=0"; print $0; }}' | 
+        {params.af_cmd} | 
         perl -ne '$norm="{wildcards.normal_id}";
                   $tum="{wildcards.tumour_id}";
                   s/(\s)$tum(\s)/$1TUMOR$2/;
