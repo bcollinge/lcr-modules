@@ -375,6 +375,41 @@ rule download_gnomad_v4_af_vcf:
         rm -r {params.parts}
         """)
 
+# Native GRCh38 gnomAD v4.1 joint (genomes + exomes), INFO/AF_joint kept as AF (all FILTERs kept; records without AF
+# or with AF 0 dropped). Per-chromosome parts already reduced this way are read from config["gnomad_v4_joint_local_parts"]
+# (chr<chrom>.af.vcf.gz) when set.
+rule download_gnomad_v4_joint_af_vcf:
+    output:
+        vcf = "downloads/gnomad/gnomad.joint.v4.1.af.{version}.vcf"
+    log:
+        "downloads/gnomad/gnomad.joint.v4.1.af.{version}.vcf.log"
+    params:
+        provider = lambda w: {"grch38": "ucsc"}[w.version],
+        url = "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/joint/gnomad.joint.v4.1.sites",
+        local = config.get("gnomad_v4_joint_local_parts", ""),
+        parts = "downloads/gnomad/gnomad.joint.v4.1.af.parts"
+    conda: CONDA_ENVS["bcftools"]
+    container: CONTAINER_ENVS["bcftools"]
+    shell:
+        op.as_one_line("""
+        mkdir -p {params.parts} &&
+        for c in $(seq 1 22) X Y; do
+            if [ -s "{params.local}/chr$c.af.vcf.gz" ]; then
+                bcftools view -e 'INFO/AF="." || INFO/AF=0' -Oz -o {params.parts}/chr$c.vcf.gz {params.local}/chr$c.af.vcf.gz 2>> {log};
+            else
+                curl -sSf {params.url}.chr$c.vcf.bgz 2>> {log}
+                    |
+                bcftools annotate -x '^INFO/AF_joint' 2>> {log}
+                    |
+                sed -e 's/^##INFO=<ID=AF_joint,/##INFO=<ID=AF,/' -e 's/\\tAF_joint=/\\tAF=/'
+                    |
+                bcftools view -e 'INFO/AF="." || INFO/AF=0' -Oz -o {params.parts}/chr$c.vcf.gz 2>> {log};
+            fi || exit 1;
+        done &&
+        bcftools concat $(for c in $(seq 1 22) X Y; do echo {params.parts}/chr$c.vcf.gz; done) -Ov -o {output.vcf} 2>> {log} &&
+        rm -r {params.parts}
+        """)
+
 # Native GRCh37 gnomAD v2.1.1 genomes, reduced to INFO/AF (all FILTERs kept; records without AF or with AF 0 dropped).
 # The genomes release has no chrY file. Per-chromosome parts already reduced to INFO/AF are read from
 # config["gnomad_v2_local_parts"] when set.
