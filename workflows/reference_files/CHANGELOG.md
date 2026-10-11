@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added `download_gnomad_v4_af_vcf`, `get_gnomad_v4_af_vcf` and `normalize_gnomad_v4_af_vcf`: native GRCh38 gnomAD v4.1 genomes sites reduced to INFO/AF (all FILTERs kept, records without AF or with AF 0 dropped), as `genomes/{genome_build}/variation/gnomad.genomes.v4.1.af[.normalized].{genome_build}.vcf.gz`. `config["gnomad_v4_local_parts"]` points at per-chromosome parts already reduced this way instead of downloading. Existing outputs are unchanged.
 - Added `download_gnomad_v2_af_vcf`, `get_gnomad_v2_af_vcf` and `normalize_gnomad_v2_af_vcf`: native GRCh37 gnomAD v2.1.1 genomes sites reduced the same way, as `genomes/{genome_build}/variation/gnomad.genomes.r2.1.1.af[.normalized].{genome_build}.vcf.gz`, with `config["gnomad_v2_local_parts"]` for pre-reduced parts.
+- Added `download_gnomad_v2_anw_af_vcf`, `get_gnomad_v2_anw_af_vcf` and `normalize_gnomad_v2_anw_af_vcf`: native GRCh37 gnomAD v2.1.1 genomes + exomes combined by allele and weighted by allele number (AC and AN summed over both releases, an allele absent from one adds 0 to both, AF = AC/AN), reduced to INFO/AF with AF 0 dropped, as `genomes/{genome_build}/variation/gnomad.genomes_exomes.r2.1.1.anw.af[.normalized].{genome_build}.vcf.gz`. `config["gnomad_v2_anw_local_parts"]` points at per-chromosome parts already built this way.
 
 ## [2.4] - 2020-07-28
 

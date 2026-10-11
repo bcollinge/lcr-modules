@@ -408,6 +408,56 @@ rule download_gnomad_v2_af_vcf:
         rm -r {params.parts}
         """)
 
+# Native GRCh37 gnomAD v2.1.1 genomes + exomes combined by allele, AN-weighted: AC and AN summed per chrom/pos/ref/alt
+# over both releases (an allele absent from one adds 0 to both), AF = AC/AN, reduced to INFO/AF (all FILTERs kept;
+# records without AF or with AF 0 dropped). Per-chromosome parts already built this way are read from
+# config["gnomad_v2_anw_local_parts"] (<chrom>.vcf.gz) when set.
+rule download_gnomad_v2_anw_af_vcf:
+    output:
+        vcf = "downloads/gnomad/gnomad.genomes_exomes.r2.1.1.anw.af.{version}.vcf"
+    log:
+        "downloads/gnomad/gnomad.genomes_exomes.r2.1.1.anw.af.{version}.vcf.log"
+    params:
+        provider = lambda w: {"grch37": "ensembl"}[w.version],
+        url = "https://storage.googleapis.com/gcp-public-data--gnomad/release/2.1.1/vcf",
+        local = config.get("gnomad_v2_anw_local_parts", ""),
+        parts = "downloads/gnomad/gnomad.genomes_exomes.r2.1.1.anw.af.parts"
+    conda: CONDA_ENVS["bcftools"]
+    container: CONTAINER_ENVS["bcftools"]
+    shell:
+        op.as_one_line("""
+        mkdir -p {params.parts} &&
+        for c in $(seq 1 22) X; do
+            if [ -s "{params.local}/$c.vcf.gz" ]; then
+                bcftools annotate -x '^INFO/AF' {params.local}/$c.vcf.gz 2>> {log}
+                    |
+                bcftools view -e 'INFO/AF="." || INFO/AF=0' -Oz -o {params.parts}/$c.vcf.gz 2>> {log};
+            else
+                for s in genomes exomes; do
+                    curl -sSf {params.url}/$s/gnomad.$s.r2.1.1.sites.$c.vcf.bgz 2>> {log}
+                        |
+                    bcftools norm -m -any 2>> {log}
+                        |
+                    bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%INFO/AC\\t%INFO/AN\\n' 2>> {log};
+                done
+                    |
+                awk -F'\\t' 'BEGIN{{OFS="\\t"}} {{k=$2"\\t"$3"\\t"$4; ac[k]+=($5=="."?0:$5); an[k]+=($6=="."?0:$6)}}
+                    END{{for (k in ac) if (an[k] > 0 && ac[k] > 0) {{split(k, a, "\\t"); print a[1], a[2], a[3], ac[k]/an[k]}}}}'
+                    |
+                sort -k1,1n -k2,2 -k3,3
+                    |
+                awk -v c=$c 'BEGIN{{OFS="\\t"; print "##fileformat=VCFv4.2";
+                    print "##INFO=<ID=AF,Number=A,Type=Float,Description=\\"AC/AN, gnomAD v2.1.1 genomes + exomes\\">";
+                    print "#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO"}}
+                    {{print c, $1, ".", $2, $3, ".", ".", "AF="sprintf("%.6g", $4)}}'
+                    |
+                bcftools view -Oz -o {params.parts}/$c.vcf.gz 2>> {log};
+            fi || exit 1;
+        done &&
+        bcftools concat $(for c in $(seq 1 22) X; do echo {params.parts}/$c.vcf.gz; done) -Ov -o {output.vcf} 2>> {log} &&
+        rm -r {params.parts}
+        """)
+
 rule download_mutect2_pon:
     output:
         vcf = "downloads/mutect2/mutect2_pon.{version}.vcf"
