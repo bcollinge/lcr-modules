@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The normalized gnomAD VCF behind `gnomADg_AF` is set per genome build with `options.gnomad_resource` (a stem under `genomes/{genome_build}/variation/`); builds not listed keep `af-only-gnomad.normalized`.
 - `options.gnomad_callside` (default False): `_vcf2maf_annotate_gnomad` looks up a split, left-aligned copy of the calls (`src/gnomad_lookup.sh`, bcftools 1.17 env) by exact allele and writes `gnomADg_AF` back onto the original records (0 when absent); `options.gnomad_atomize` also splits MNVs in the copy (`bcftools norm -a`), giving an MNV the max AF over its bases. Off, the rule runs the previous command unchanged.
+- `options.mnv_gnomad_cutoff` (default null = `gnomAD_cutoff`): the gnomAD cut-off for DNP/TNP/ONP rows in `_vcf2maf_gnomad_filter_maf`.
 
 ## [1.3] - 2022-02-23
 

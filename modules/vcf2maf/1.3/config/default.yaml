@@ -27,6 +27,7 @@ lcr-modules:
       maf2maf: "--cache-version 100 --species homo_sapiens --retain-cols gnomAD_AF,gnomADg_AF,blacklist_count"
       species: "homo_sapiens"
       gnomAD_cutoff: 0.001 # cut-off to be used for AF frequency of germline variants in gnomAD
+      mnv_gnomad_cutoff: null # cut-off for DNP/TNP/ONP rows in the gnomAD MAF filter; null uses gnomAD_cutoff
       gnomad_callside: False # True: gnomADg_AF is looked up for a split, left-aligned copy of the calls (src/gnomad_lookup.sh, bcftools 1.17) and written back onto the original records, 0 when absent
       gnomad_atomize: False # with gnomad_callside: MNVs are also split into SNVs in the copy (bcftools norm -a); an MNV gets the max AF over its bases
       target_builds: ["hg38", "grch38", "hg19", "grch37"] # Target genome builds for chr-prefixing and CrossMap
