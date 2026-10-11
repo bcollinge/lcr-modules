@@ -534,6 +534,28 @@ rule normalize_gnomad_v2_anw_af_vcf:
         touch {output.vcf_index}
         """)
 
+# One record per position with all ALTs joined (bcftools norm -m +any, left-aligned, INFO/AF only), for Mutect2's
+# --germline-resource: Mutect2 reads only the first resource record at a position.
+rule join_gnomad_af_vcf:
+    input:
+        fasta = rules.get_genome_fasta_download.output.fasta,
+        vcf = "genomes/{genome_build}/variation/{stem}.{genome_build}.vcf.gz"
+    output:
+        vcf = "genomes/{genome_build}/variation/{stem}.joined.{genome_build}.vcf.gz",
+        vcf_index = "genomes/{genome_build}/variation/{stem}.joined.{genome_build}.vcf.gz.tbi"
+    wildcard_constraints:
+        stem = r"gnomad\.joint\.v4\.1\.af|gnomad\.genomes_exomes\.r2\.1\.1\.anw\.af"
+    threads: 4
+    conda: CONDA_ENVS["bcftools"]
+    container: CONTAINER_ENVS["bcftools"]
+    shell:
+        op.as_one_line("""
+        bcftools view {input.vcf} | grep -v "_alt" | bcftools annotate -x '^INFO/AF' |
+        bcftools norm -m +any -f {input.fasta} --threads {threads} -Oz -o {output.vcf}
+            &&
+        bcftools index -t {output.vcf}
+        """)
+
 rule get_mutect2_pon:
     input:
         vcf = get_download_file(rules.download_mutect2_pon.output.vcf),
