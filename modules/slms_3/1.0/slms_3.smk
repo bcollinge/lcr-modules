@@ -205,6 +205,42 @@ def _slms_3_af_cmd(caller):
                 "awk 'BEGIN {FS=OFS=\"\\t\"} { if ($1 !~ /^#/ && $8 !~ \";AF=\") $8=$8\";AF=0\"; print $0; }'")
     return _f
 
+_SLMS3_DROPPED = CFG_SLMS3["options"].get("gnomad_dropped", False)
+
+# options.gnomad_dropped: each gnomAD filter also writes the records it removes, with the looked-up AF and the failed
+# clause, to {caller}.gnomad_dropped.tsv.gz. Off, the outputs and commands are unchanged.
+def _slms_3_dropped_out(subdir, caller):
+    if not _SLMS3_DROPPED:
+        return {}
+    return {"dropped": CFG_SLMS3["dirs"][subdir] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/" + caller + ".gnomad_dropped.tsv.gz"}
+
+# Saves the AF-annotated stream so the kept and the dropped records are both read from it.
+def _slms_3_dropped_split(wildcards, output):
+    if not _SLMS3_DROPPED:
+        return ""
+    return f"bcftools view -Ob -o {output.vcf}.af.bcf && bcftools view {output.vcf}.af.bcf |"
+
+# Records failing `keep` from the saved stream: CHROM POS REF ALT AF failed (awk_body prints the row from the query
+# columns, extra ones from `fields`).
+def _slms_3_dropped_cmd(keep, awk_body, fields = ""):
+    def _f(wildcards, input, output):
+        if not _SLMS3_DROPPED:
+            return ""
+        return (f"&& {{ echo '# gnomAD resource: {input.gnomad}'; printf 'CHROM\\tPOS\\tREF\\tALT\\tAF\\tfailed\\n'; "
+                f"bcftools view -e '{keep}' {output.vcf}.af.bcf | "
+                f"bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%INFO/AF{fields}\\n' | "
+                f"awk 'BEGIN {{FS=OFS=\"\\t\"}} {{{awk_body}}}'; }} | "
+                f"gzip > {output.dropped} && rm {output.vcf}.af.bcf")
+    return _f
+
+_SLMS3_KEEP_AF = "INFO/AF < 0.0001"
+_SLMS3_KEEP_STRELKA = "INFO/AF < 0.0001 && INFO/SomaticEVS >= 10 && FMT/DP[1] >= 10"
+_SLMS3_PRINT_AF = 'print $1, $2, $3, $4, $5, "af"'
+# Strelka: af when no ALT is under the cut; evs and dp from SomaticEVS and the tumour DP
+_SLMS3_PRINT_STRELKA = ('split($7, d, ","); m = 1; n = split($5, a, ","); for (i = 1; i <= n; i++) if (a[i] + 0 < m) m = a[i] + 0; '
+                        'f = (m >= 0.0001) ? "af" : ""; if ($6 == "." || $6 + 0 < 10) f = f (f == "" ? "" : "+") "evs"; '
+                        'if (d[2] == "." || d[2] + 0 < 10) f = f (f == "" ? "" : "+") "dp"; print $1, $2, $3, $4, $5, f')
+
 # Annotate Strelka VCF and remove common GnomAD variants
 
 rule _slms_3_annotate_strelka_gnomad:
@@ -215,11 +251,14 @@ rule _slms_3_annotate_strelka_gnomad:
         af = _slms_3_af_input("strelka")
     output:
         vcf = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz", 
-        tbi = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz.tbi"
+        tbi = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz.tbi",
+        **_slms_3_dropped_out("strelka_gnomad", "strelka")
     log:
         stderr = CFG_SLMS3["logs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka_gnomad.stderr.log"
     params:
-        af_cmd = _slms_3_af_cmd("strelka")
+        af_cmd = _slms_3_af_cmd("strelka"),
+        split = _slms_3_dropped_split,
+        dropped = _slms_3_dropped_cmd(_SLMS3_KEEP_STRELKA, _SLMS3_PRINT_STRELKA, "\\t%INFO/SomaticEVS\\t[%DP,]")
     conda:
         CFG_SLMS3["conda_envs"]["bcftools"]
     container:
@@ -230,10 +269,11 @@ rule _slms_3_annotate_strelka_gnomad:
         **CFG_SLMS3["resources"]["strelka_gnomad"]
     shell:
         op.as_one_line("""
-        {params.af_cmd} | 
+        {params.af_cmd} | {params.split}
         bcftools view -i 'INFO/AF < 0.0001 && INFO/SomaticEVS >= 10 && FMT/DP[1] >= 10' -Oz -o {output.vcf} 2> {log.stderr}
         && 
         tabix -p vcf {output.vcf} 2>> {log.stderr}
+        {params.dropped}
         """)
 
 
@@ -247,11 +287,14 @@ rule _slms_3_annotate_lofreq_gnomad:
         af = _slms_3_af_input("lofreq")
     output: 
         vcf = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz", 
-        tbi = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz.tbi"
+        tbi = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz.tbi",
+        **_slms_3_dropped_out("lofreq_gnomad", "lofreq")
     log:
         stderr = CFG_SLMS3["logs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq_gnomad.stderr.log"
     params:
-        af_cmd = _slms_3_af_cmd("lofreq")
+        af_cmd = _slms_3_af_cmd("lofreq"),
+        split = _slms_3_dropped_split,
+        dropped = _slms_3_dropped_cmd(_SLMS3_KEEP_AF, _SLMS3_PRINT_AF)
     conda:
         CFG_SLMS3["conda_envs"]["bcftools"]
     container:
@@ -262,10 +305,11 @@ rule _slms_3_annotate_lofreq_gnomad:
         CFG_SLMS3["threads"]["lofreq_gnomad"]
     shell: 
         op.as_one_line("""
-        {params.af_cmd} | 
+        {params.af_cmd} | {params.split}
         bcftools view -i 'INFO/AF < 0.0001' -Oz -o {output.vcf} 2> {log.stderr}
         && 
         tabix -p vcf {output.vcf} 2>> {log.stderr}
+        {params.dropped}
         """)
 
 # Create a union of Strelka and Lofreq as candidates for Mutect2
@@ -304,11 +348,14 @@ rule _slms_3_annotate_sage_gnomad:
         af = _slms_3_af_input("sage")
     output: 
         vcf = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz", 
-        tbi = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz.tbi"
+        tbi = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz.tbi",
+        **_slms_3_dropped_out("sage_gnomad", "sage")
     log:
         stderr = CFG_SLMS3["logs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka_lofreq_union_gnomad.stderr.log"
     params:
-        af_cmd = _slms_3_af_cmd("sage")
+        af_cmd = _slms_3_af_cmd("sage"),
+        split = _slms_3_dropped_split,
+        dropped = _slms_3_dropped_cmd(_SLMS3_KEEP_AF, _SLMS3_PRINT_AF)
     conda:
         CFG_SLMS3["conda_envs"]["bcftools"]
     container:
@@ -319,7 +366,7 @@ rule _slms_3_annotate_sage_gnomad:
         CFG_SLMS3["threads"]["sage_gnomad"]
     shell: 
         op.as_one_line("""
-        {params.af_cmd} | 
+        {params.af_cmd} | {params.split}
         perl -ne '$norm="{wildcards.normal_id}";
                   $tum="{wildcards.tumour_id}";
                   s/(\s)$tum(\s)/$1TUMOR$2/;
@@ -328,6 +375,7 @@ rule _slms_3_annotate_sage_gnomad:
         bcftools view -s "NORMAL,TUMOR" -i 'INFO/AF < 0.0001' -Oz -o {output.vcf} 2> {log.stderr} 
         &&
         tabix -p vcf {output.vcf} 2>> {log.stderr}
+        {params.dropped}
         """)
 
 
