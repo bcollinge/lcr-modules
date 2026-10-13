@@ -486,6 +486,7 @@ rule _vcf2maf_reannotate:
 
 
 _VCF2MAF_SECOND_CUT = CFG["options"].get("second_cut", {}).get("enabled", False)
+_VCF2MAF_SECOND_CUT_KEEP = CFG["options"].get("second_cut", {}).get("keep_lookup", False)
 
 # Second cut (options.second_cut): projected MAF rows looked up by exact allele in the landing build's release; rows with
 # AF above the cut-off move to a dropped MAF. Native MAFs are not touched.
@@ -500,7 +501,7 @@ if _VCF2MAF_SECOND_CUT:
             unpack(_vcf2maf_second_cut_release),
             maf = str(rules._vcf2maf_reannotate.output.maf)
         output:
-            vcf = temp(CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.vcf")
+            vcf = CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.vcf" if _VCF2MAF_SECOND_CUT_KEEP else temp(CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.vcf")
         log:
             stderr = CFG["logs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.stderr.log"
         params:
@@ -520,13 +521,15 @@ if _VCF2MAF_SECOND_CUT:
             vcf = str(rules._vcf2maf_second_cut_vcf.output.vcf)
         output:
             maf = temp(CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.kept.{maf}"),
-            dropped = CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.dropped.{maf}"
+            dropped = CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.dropped.{maf}",
+            **({"af": CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.kept.{maf}.af.tsv"} if _VCF2MAF_SECOND_CUT_KEEP else {})
         log:
             stderr = CFG["logs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.second_cut.stderr.log"
         params:
             cutoff = CFG["options"]["second_cut"].get("cutoff", 0.001),
             atomize = int(bool(CFG["options"].get("gnomad_atomize", False))),
-            lookup = CFG["inputs"]["src_dir"] + "/gnomad_lookup.sh"
+            lookup = CFG["inputs"]["src_dir"] + "/gnomad_lookup.sh",
+            rm_af = lambda wildcards, output: "" if _VCF2MAF_SECOND_CUT_KEEP else f"&& rm {output.maf}.af.tsv"
         conda:
             CFG["conda_envs"]["bcftools_lookup"]
         container:
@@ -546,8 +549,7 @@ if _VCF2MAF_SECOND_CUT:
                 !h {{print; print > d; h=1; next}}
                 {{n++; if ((n in af) && af[n] > c) print > d; else print}}'
                 {output.maf}.af.tsv {input.maf} > {output.maf}
-                &&
-            rm {output.maf}.af.tsv
+            {params.rm_af}
             """)
 
 def get_normalize_input(wildcards, todo_only = False):

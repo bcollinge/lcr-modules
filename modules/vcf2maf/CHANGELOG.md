@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `options.gnomad_callside` (default False): `_vcf2maf_annotate_gnomad` looks up a split, left-aligned copy of the calls (`src/gnomad_lookup.sh`, bcftools 1.17 env) by exact allele and writes `gnomADg_AF` back onto the original records (0 when absent); `options.gnomad_atomize` also splits MNVs in the copy (`bcftools norm -a`), giving an MNV the max AF over its bases. Off, the rule runs the previous command unchanged.
 - `options.mnv_gnomad_cutoff` (default null = `gnomAD_cutoff`): the gnomAD cut-off for DNP/TNP/ONP rows in `_vcf2maf_gnomad_filter_maf`.
 - `options.second_cut` (default `enabled: False`): projected MAF rows are written as VCF (`src/maf_rows_to_vcf.py`), looked up by exact allele in the landing build's release (`src/gnomad_lookup.sh`, bcftools 1.17 env), and rows with AF above `cutoff` move to `second_cut/.../{base_name}.{filter}.dropped.maf`; `_vcf2maf_normalize_prefix` reads the kept rows. The `second_cut` subdirectory exists only when enabled. Native MAFs are unchanged.
+- `options.second_cut.keep_lookup` (default False): the second cut keeps its rows VCF and the looked-up AF per row (`{base_name}.{filter}.kept.{maf}.af.tsv`, row number and AF) instead of deleting them. Off, the rules run the previous command unchanged.
 
 ## [1.3] - 2022-02-23
 
