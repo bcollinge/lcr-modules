@@ -42,6 +42,7 @@ lcr-modules:
             gnomad_callside: False # True: the three gnomAD filters look up a split, left-aligned copy of the calls in the (normalized) resource and write INFO/AF back onto the original records
             gnomad_atomize: False # with gnomad_callside: MNVs are also split into SNVs in the copy (bcftools norm -a); an MNV gets the max AF over its bases
             gnomad_dropped: False # True: the three gnomAD filters also write the records they remove to {caller}.gnomad_dropped.tsv.gz
+            gnomad_gate_af: 0.0001 # the Strelka, LoFreq and SAGE gnomAD filters keep records with INFO/AF below this
             
         threads:
             strelka_gnomad: 4

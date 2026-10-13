@@ -152,6 +152,7 @@ def _slms_3_gnomad(wildcards, stems=dict(CFG_SLMS3["options"].get("gnomad_resour
 
 _SLMS3_CALLSIDE = CFG_SLMS3["options"].get("gnomad_callside", False)
 _SLMS3_DROPPED = CFG_SLMS3["options"].get("gnomad_dropped", False)
+_SLMS3_GATE_AF = str(CFG_SLMS3["options"].get("gnomad_gate_af", 0.0001))
 
 # Call-side lookup (options.gnomad_callside): a split, left-aligned copy of the caller VCF (MNVs also split with
 # options.gnomad_atomize) is looked up by exact allele in the normalized resource; INFO/AF is written back onto the
@@ -235,12 +236,12 @@ def _slms_3_dropped_cmd(keep, awk_body, fields = ""):
                 f"gzip > {output.dropped} && rm {output.vcf}.af.bcf")
     return _f
 
-_SLMS3_KEEP_AF = "INFO/AF < 0.0001"
-_SLMS3_KEEP_STRELKA = "INFO/AF < 0.0001 && INFO/SomaticEVS >= 10 && FMT/DP[1] >= 10"
+_SLMS3_KEEP_AF = "INFO/AF < " + _SLMS3_GATE_AF
+_SLMS3_KEEP_STRELKA = "INFO/AF < " + _SLMS3_GATE_AF + " && INFO/SomaticEVS >= 10 && FMT/DP[1] >= 10"
 _SLMS3_PRINT_AF = 'print $1, $2, $3, $4, $5, "af"'
 # Strelka: af when no ALT is under the cut; evs and dp from SomaticEVS and the tumour DP
 _SLMS3_PRINT_STRELKA = ('split($7, d, ","); m = 1; n = split($5, a, ","); for (i = 1; i <= n; i++) if (a[i] + 0 < m) m = a[i] + 0; '
-                        'f = (m >= 0.0001) ? "af" : ""; if ($6 == "." || $6 + 0 < 10) f = f (f == "" ? "" : "+") "evs"; '
+                        'f = (m >= ' + _SLMS3_GATE_AF + ') ? "af" : ""; if ($6 == "." || $6 + 0 < 10) f = f (f == "" ? "" : "+") "evs"; '
                         'if (d[2] == "." || d[2] + 0 < 10) f = f (f == "" ? "" : "+") "dp"; print $1, $2, $3, $4, $5, f')
 
 # Annotate Strelka VCF and remove common GnomAD variants
@@ -260,7 +261,8 @@ rule _slms_3_annotate_strelka_gnomad:
     params:
         af_cmd = _slms_3_af_cmd("strelka"),
         split = _slms_3_dropped_split,
-        dropped = _slms_3_dropped_cmd(_SLMS3_KEEP_STRELKA, _SLMS3_PRINT_STRELKA, "\\t%INFO/SomaticEVS\\t[%DP,]")
+        dropped = _slms_3_dropped_cmd(_SLMS3_KEEP_STRELKA, _SLMS3_PRINT_STRELKA, "\\t%INFO/SomaticEVS\\t[%DP,]"),
+        keep = _SLMS3_KEEP_STRELKA
     conda:
         CFG_SLMS3["conda_envs"]["bcftools"]
     container:
@@ -272,7 +274,7 @@ rule _slms_3_annotate_strelka_gnomad:
     shell:
         op.as_one_line("""
         {params.af_cmd} | {params.split}
-        bcftools view -i 'INFO/AF < 0.0001 && INFO/SomaticEVS >= 10 && FMT/DP[1] >= 10' -Oz -o {output.vcf} 2> {log.stderr}
+        bcftools view -i '{params.keep}' -Oz -o {output.vcf} 2> {log.stderr}
         && 
         tabix -p vcf {output.vcf} 2>> {log.stderr}
         {params.dropped}
@@ -296,7 +298,8 @@ rule _slms_3_annotate_lofreq_gnomad:
     params:
         af_cmd = _slms_3_af_cmd("lofreq"),
         split = _slms_3_dropped_split,
-        dropped = _slms_3_dropped_cmd(_SLMS3_KEEP_AF, _SLMS3_PRINT_AF)
+        dropped = _slms_3_dropped_cmd(_SLMS3_KEEP_AF, _SLMS3_PRINT_AF),
+        keep = _SLMS3_KEEP_AF
     conda:
         CFG_SLMS3["conda_envs"]["bcftools"]
     container:
@@ -308,7 +311,7 @@ rule _slms_3_annotate_lofreq_gnomad:
     shell: 
         op.as_one_line("""
         {params.af_cmd} | {params.split}
-        bcftools view -i 'INFO/AF < 0.0001' -Oz -o {output.vcf} 2> {log.stderr}
+        bcftools view -i '{params.keep}' -Oz -o {output.vcf} 2> {log.stderr}
         && 
         tabix -p vcf {output.vcf} 2>> {log.stderr}
         {params.dropped}
@@ -357,7 +360,8 @@ rule _slms_3_annotate_sage_gnomad:
     params:
         af_cmd = _slms_3_af_cmd("sage"),
         split = _slms_3_dropped_split,
-        dropped = _slms_3_dropped_cmd(_SLMS3_KEEP_AF, _SLMS3_PRINT_AF)
+        dropped = _slms_3_dropped_cmd(_SLMS3_KEEP_AF, _SLMS3_PRINT_AF),
+        keep = _SLMS3_KEEP_AF
     conda:
         CFG_SLMS3["conda_envs"]["bcftools"]
     container:
@@ -374,7 +378,7 @@ rule _slms_3_annotate_sage_gnomad:
                   s/(\s)$tum(\s)/$1TUMOR$2/;
                   s/(\s)$norm(\s)/$1NORMAL$2/;
                   print;' |
-        bcftools view -s "NORMAL,TUMOR" -i 'INFO/AF < 0.0001' -Oz -o {output.vcf} 2> {log.stderr} 
+        bcftools view -s "NORMAL,TUMOR" -i '{params.keep}' -Oz -o {output.vcf} 2> {log.stderr} 
         &&
         tabix -p vcf {output.vcf} 2>> {log.stderr}
         {params.dropped}
