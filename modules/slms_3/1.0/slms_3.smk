@@ -151,6 +151,7 @@ def _slms_3_gnomad(wildcards, stems=dict(CFG_SLMS3["options"].get("gnomad_resour
     return reference_files(f"genomes/{wildcards.genome_build}/variation/{stem}.{wildcards.genome_build}.vcf.gz")
 
 _SLMS3_CALLSIDE = CFG_SLMS3["options"].get("gnomad_callside", False)
+_SLMS3_DROPPED = CFG_SLMS3["options"].get("gnomad_dropped", False)
 
 # Call-side lookup (options.gnomad_callside): a split, left-aligned copy of the caller VCF (MNVs also split with
 # options.gnomad_atomize) is looked up by exact allele in the normalized resource; INFO/AF is written back onto the
@@ -160,6 +161,8 @@ def _slms_3_lookup_vcf(wildcards):
             "lofreq": str(rules._slms_3_input_lofreq_vcf.output.vcf),
             "sage": str(rules._slms_3_input_sage_vcf.output.vcf)}[wildcards.caller]
 
+_SLMS3_LOOKUP_VCF = CFG_SLMS3["dirs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_af.vcf"
+
 if _SLMS3_CALLSIDE:
     rule _slms_3_gnomad_lookup:
         input:
@@ -167,14 +170,15 @@ if _SLMS3_CALLSIDE:
             gnomad = _slms_3_gnomad,
             fasta = reference_files("genomes/{genome_build}/genome_fasta/genome.fa")
         output:
-            vcf = temp(CFG_SLMS3["dirs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_af.vcf")
+            vcf = _SLMS3_LOOKUP_VCF + ".gz" if _SLMS3_DROPPED else temp(_SLMS3_LOOKUP_VCF)
         log:
             stderr = CFG_SLMS3["logs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_lookup.stderr.log"
         wildcard_constraints:
             caller = "strelka|lofreq|sage"
         params:
             script = CFG_SLMS3["inputs"]["gnomad_lookup"],
-            atomize = int(bool(CFG_SLMS3["options"].get("gnomad_atomize", False)))
+            atomize = int(bool(CFG_SLMS3["options"].get("gnomad_atomize", False))),
+            bgzip = "| bgzip" if _SLMS3_DROPPED else ""
         conda:
             CFG_SLMS3["conda_envs"]["bcftools_lookup"]
         container:
@@ -186,7 +190,7 @@ if _SLMS3_CALLSIDE:
         shell:
             op.as_one_line("""
             bash {params.script} {input.vcf} {input.fasta} {input.gnomad} AF {params.atomize} {output.vcf}.tmp
-            > {output.vcf} 2> {log.stderr}
+            2> {log.stderr} {params.bgzip} > {output.vcf}
             """)
 
 def _slms_3_af_input(caller):
@@ -204,8 +208,6 @@ def _slms_3_af_cmd(caller):
         return (f"bcftools annotate --threads {threads} -a {input.gnomad} -c INFO/AF {input.vcf} | "
                 "awk 'BEGIN {FS=OFS=\"\\t\"} { if ($1 !~ /^#/ && $8 !~ \";AF=\") $8=$8\";AF=0\"; print $0; }'")
     return _f
-
-_SLMS3_DROPPED = CFG_SLMS3["options"].get("gnomad_dropped", False)
 
 # options.gnomad_dropped: each gnomAD filter also writes the records it removes, with the looked-up AF and the failed
 # clause, to {caller}.gnomad_dropped.tsv.gz. Off, the outputs and commands are unchanged.
