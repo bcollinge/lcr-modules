@@ -1,0 +1,10 @@
+name: ichorcna-0.5.1
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.4
+  - r-ichorcna=0.5.1
+  - r-optparse
+  - hmmcopy=0.1.1
+  - samtools=1.24

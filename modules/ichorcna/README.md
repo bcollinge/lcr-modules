@@ -19,7 +19,22 @@ lcr-modules:
     ichorcna:
         inputs:
             sample_bam: "data/{sample_id}.bam"
+            sample_bai: "data/{sample_id}.bam.bai"
+        options:
+            bin_sizes: [500000]
+            panel_of_normals:
+                members:
+                    my_panel: ["normal_1", "normal_2", "normal_3"]
+                assign:
+                    _default: "my_panel"
+                exclude:
+                    tumour_1: ["normal_2"]
 ```
+
+Version 1.2 builds its panels of normals from samples in the sample table: every sample with a panel in
+`assign` (or `_default`) is run against that panel, and every panel member is counted with readCounter.
+A sample is left out of its own panel, and `exclude` removes further members for one sample (e.g. its
+matched normal); either gives that sample its own panel file.
 
 The example snakefile:
 
@@ -38,12 +53,12 @@ subworkflow reference_files:
     configfile:
         "../workflows/reference_files/2.4/config/default.yaml"
 
-configfile: "../modules/ichorcna/1.1/config/default.yaml"
+configfile: "../modules/ichorcna/1.2/config/default.yaml"
 configfile: "my_config.yaml" # the path to config file from the previous example
 
 config["lcr-modules"]["_shared"]["samples"] = SAMPLES
 
-include: "../modules/ichorcna/1.1/ichorcna.smk"
+include: "../modules/ichorcna/1.2/ichorcna.smk"
 
 rule all:
     input:
