@@ -1,0 +1,55 @@
+lcr-modules:
+
+    wisecondorx:
+
+        inputs:
+            # Available wildcards: {seq_type} {genome_build} {sample_id}
+            # A .bam or .cram; the extension decides how it is read (CRAM is decoded with the genome_build fasta).
+            sample_bam: "__UPDATE__"
+            # The index of sample_bam (.bai or .crai)
+            sample_bai: "__UPDATE__"
+            # Optional headerless BED (chrom, start, end) masked at predict; null for none
+            blacklist: null
+
+        # Reference sets, name -> list of sample_ids. Every member must be in the samples table at one
+        # genome_build, under one seq_type. newref needs at least 10 members; the WisecondorX README
+        # recommends at least 50, process-matched to the test samples.
+        # Names may use letters, digits, "_" and ".".
+        references: {}
+
+        # Samples to predict, sample_id -> list of reference set names. A sample is never predicted
+        # against a set that holds a sample of its own patient_id.
+        predict: {}
+
+        options:
+            convert_binsize: 5000
+            newref_binsize: 100000
+            convert: ""
+            # --refsize is the number of within-sample reference bins per target bin
+            newref: "--refsize 300"
+            # Y read fraction cut-off that assigns sex at newref; null fits the Gaussian mixture
+            yfrac: null
+            # --seed makes the circular binary segmentation reproducible
+            predict: "--zscore 5 --alpha 0.0001 --maskrepeats 5 --minrefbins 150 --seed 1"
+
+        conda_envs:
+            wisecondorx: "{MODSDIR}/envs/wisecondorx-1.2.9.yaml"
+
+        threads:
+            convert: 1
+            newref: 8
+            predict: 1
+
+        resources:
+            convert:
+                mem_mb: 4000
+            newref:
+                mem_mb: 16000
+            predict:
+                mem_mb: 8000
+
+        pairing_config:
+            genome:
+                run_paired_tumours: False
+                run_unpaired_tumours_with: "no_normal"
+                run_paired_tumours_as_unpaired: True
