@@ -34,7 +34,7 @@ extdata <- function(f) {
   p
 }
 
-run_ichorCNA(
+run <- function() run_ichorCNA(
   id = opt$id,
   tumor_wig = opt$WIG,
   normal_panel = opt$normalPanel,
@@ -67,3 +67,14 @@ run_ichorCNA(
   outDir = opt$outDir,
   cores = opt$cores
 )
+
+# Upstream bug (GavinHaLab/ichorCNA#29): with more than 10,000 bins and no repTimeWig, plotSolutions fails
+# in plotFitCompareByChr after every output is written. Only that error, with all outputs present, passes.
+outputs <- file.path(opt$outDir, paste0(opt$id, c(".cna.seg", ".seg", ".seg.txt", ".params.txt", ".correctedDepth.txt")))
+tryCatch(run(), error = function(e) {
+  if (grepl("values(x)[[y]]", conditionMessage(e), fixed = TRUE) && all(file.exists(outputs))) {
+    message("ignored post-output plotting error (ichorCNA#29): ", conditionMessage(e))
+  } else {
+    stop(e)
+  }
+})

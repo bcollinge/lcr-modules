@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This release was authored by Brett Collinge.
 
+- `run_ichorcna.R` passes the post-output plotting error of ichorCNA#29 (more than 10,000 bins and no
+  replication-timing wig) when all five outputs exist; any other error still fails the job.
 - ichorCNA comes from the bioconda `r-ichorcna` 0.5.1 package (GavinHaLab release v0.5.1, GRanges-based
   loaders) in `envs/ichorcna-0.5.1.yaml`, with `hmmcopy` (readCounter) and `samtools`. Nothing is cloned at
   run time; the package extdata supplies the GC and mappability wigs and the centromere tables.
