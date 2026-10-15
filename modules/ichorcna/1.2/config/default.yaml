@@ -1,0 +1,103 @@
+lcr-modules:
+
+    ichorcna:
+
+        inputs:
+            # Available wildcards: {seq_type} {genome_build} {sample_id}
+            # BAM or CRAM; CRAMs are decoded against the reference_files genome fasta.
+            sample_bam: "__UPDATE__"
+            sample_bai: "__UPDATE__"
+
+        scratch_subdirectories: ["bam"]
+
+        options:
+            # One run per bin size. Bundled gc/map wigs exist at 1000000, 500000, 50000 and 10000.
+            bin_sizes: [1000000]
+            readcounter:
+                quality: 20
+            # ichorCNA's name for each genome build; selects the bundled wigs, centromeres and seqinfo.
+            ichorcna_build:
+                grch37: "hg19"
+                hs37d5: "hg19"
+                hg19: "hg19"
+                hg38: "hg38"
+                grch38: "hg38"
+            genome_style:
+                grch37: "NCBI"
+                hs37d5: "NCBI"
+                hg19: "UCSC"
+                hg38: "UCSC"
+                grch38: "NCBI"
+            # Bare names are read from the ichorCNA package extdata; paths are used as given.
+            gc_wig: "gc_{ichorcna_build}_{bin_label}.wig"
+            map_wig: "map_{ichorcna_build}_{bin_label}.wig"
+            centromere:
+                hg19: "GRCh37.p13_centromere_UCSC-gapTable.txt"
+                hg38: "GRCh38.GCA_000001405.2_centromere_acen.txt"
+            # Panels of normals, built from the members' wigs with createPanelOfNormals.
+            #   members: {panel: [sample_id, ...]}; members share the run's seq_type and genome_build.
+            #   assign: {sample_id: panel}; "_default" applies to unlisted samples. Samples with no
+            #     panel are counted (their wigs can feed a panel) but not run.
+            #   exclude: {sample_id: [sample_id, ...]}, e.g. a tumour's matched normal.
+            # A sample is never in its own panel; a sample whose panel loses members gets its own
+            # panel file, named <panel>--minus--<sample_id>.
+            panel_of_normals:
+                method: "median"
+                members: {}
+                assign: {}
+                exclude: {}
+            pon:
+                chrs: "c(1:22, \"X\")"
+                chrNormalize: "c(1:22)"
+                minMapScore: 0.75
+                fracReadsInChrYForMale: 0.002
+            scripts:
+                pon: "{MODSDIR}/src/R/create_pon.R"
+                run: "{MODSDIR}/src/R/run_ichorcna.R"
+            run:
+                chrs: "c(1:22, \"X\")"
+                chrTrain: "c(1:22)"
+                chrNormalize: "c(1:22)"
+                normal: "c(0.5,0.6,0.7,0.8,0.9,0.95)"
+                ploidy: "c(2,3)"
+                maxCN: 5
+                scStates: "c(1,3)"
+                estimateNormal: True
+                estimatePloidy: True
+                estimateScPrevalence: True
+                includeHOMD: False
+                txnE: 0.9999
+                txnStrength: 10000
+                minMapScore: 0.75
+                fracReadsInChrYForMale: 0.002
+                maxFracGenomeSubclone: 0.5
+                maxFracCNASubclone: 0.7
+                plotFileType: "pdf"
+                plotYLim: "c(-2,4)"
+
+        conda_envs:
+            ichorcna: "{MODSDIR}/envs/ichorcna-0.5.1.yaml"
+
+        threads:
+            bam: 4
+            readcounter: 1
+            pon: 1
+            run: 1
+
+        resources:
+            bam:
+                mem_mb: 4000
+                bam: 1
+            readcounter:
+                mem_mb: 2000
+                bam: 1
+            pon:
+                mem_mb: 8000
+            run:
+                mem_mb: 8000
+
+        pairing_config:
+            genome:
+                run_paired_tumours: False
+                run_unpaired_tumours_with: "no_normal"
+                run_paired_tumours_as_unpaired: True

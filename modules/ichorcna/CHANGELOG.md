@@ -5,6 +5,24 @@ All notable changes to the `ichorcna` module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2] - 2026-10-15
+
+This release was authored by Brett Collinge.
+
+- ichorCNA comes from the bioconda `r-ichorcna` 0.5.1 package (GavinHaLab release v0.5.1, GRanges-based
+  loaders) in `envs/ichorcna-0.5.1.yaml`, with `hmmcopy` (readCounter) and `samtools`. Nothing is cloned at
+  run time; the package extdata supplies the GC and mappability wigs and the centromere tables.
+- `src/R/create_pon.R` and `src/R/run_ichorcna.R` are command-line entries to the package functions
+  `createPanelOfNormals` and `run_ichorCNA` (0.5.x ships no scripts).
+- Read counts come from readCounter on an indexed BAM; CRAM input is written to a temporary BAM against the
+  `reference_files` genome fasta. deeptools / bigWigToWig / bedops are no longer used.
+- Panels of normals are built in the module (`options.panel_of_normals`): named member lists, a panel per
+  sample (`assign`) and per-sample exclusions (`exclude`). A sample is never in its own panel, which gives
+  leave-one-out panels when normals are themselves run.
+- `options.bin_sizes` runs several bin sizes in one invocation; the bin size and panel are part of every
+  output path.
+- 99-outputs: `cna_seg/`, `seg/` and `params/`, keyed `{seq_type}--{genome_build}/{bin_size}/{panel}/`.
+
 ## [1.1] - 2022-01-08
 
 This release was authored by jawong.
