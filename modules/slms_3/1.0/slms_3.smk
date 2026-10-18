@@ -162,9 +162,8 @@ def _slms_3_lookup_vcf(wildcards):
             "lofreq": str(rules._slms_3_input_lofreq_vcf.output.vcf),
             "sage": str(rules._slms_3_input_sage_vcf.output.vcf)}[wildcards.caller]
 
-_SLMS3_LOOKUP_VCF = CFG_SLMS3["dirs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_af.vcf"
-
 if _SLMS3_CALLSIDE:
+    _SLMS3_LOOKUP_VCF = CFG_SLMS3["dirs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_af.vcf"
     rule _slms_3_gnomad_lookup:
         input:
             vcf = _slms_3_lookup_vcf,
