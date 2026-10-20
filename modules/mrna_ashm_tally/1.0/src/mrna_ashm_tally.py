@@ -7,9 +7,11 @@ the reference base and the count of each observed base; calling thresholds are
 applied downstream, not here.
 
   mrna_ashm_tally.py --bam X.cram --index X.cram.crai --reference genome.fa \
-      --regions regions.tsv --sample SAMPLE --out SAMPLE.tally.tsv
+      --regions regions.tsv --sample SAMPLE --out SAMPLE.tally.tsv.gz
 
-regions: a headed TSV with columns region, chrom, start, end (1-based inclusive).
+regions: a headed TSV with columns region, chrom, start, end (1-based inclusive),
+sorted and non-overlapping. The output is bgzip-compressed and tabix-indexed
+(OUT.tbi) on chrom and pos.
 Contigs are matched with or without a "chr" prefix, whichever the alignment uses.
 """
 import argparse
@@ -90,7 +92,10 @@ def main():
 
     af.close()
     fa.close()
-    os.replace(tmp, args.out)
+    pysam.tabix_index(tmp, force=True, seq_col=2, start_col=3, end_col=3,
+                      line_skip=1)
+    os.replace(tmp + ".gz.tbi", args.out + ".tbi")
+    os.replace(tmp + ".gz", args.out)
 
     msg = f"{args.sample}: {len(regions)} regions"
     if n_fail:

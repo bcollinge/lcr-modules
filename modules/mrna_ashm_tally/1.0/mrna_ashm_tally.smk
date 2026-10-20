@@ -47,15 +47,17 @@ CFG = op.setup_module(
 # point is captured here
 _SAMPLES = CFG["samples"]
 _REGIONS = CFG["regions"]
+_REGIONS_BED = CFG["regions_bed"]
+_MERGE = CFG["options"]["merge"]
 
 # One region file per genome build, so a build whose coordinates differ needs
 # only its own entry in the config rather than a separate run
 _BUILDS = sorted(set(_SAMPLES["genome_build"]))
-_missing = [b for b in _BUILDS if b not in _REGIONS]
+_missing = [b for b in _BUILDS if b not in _REGIONS and b not in _REGIONS_BED]
 assert not _missing, (
     "mrna_ashm_tally: no regions configured for genome build(s): "
     + ", ".join(_missing)
-    + ". Set `regions` in the project config, keyed by genome build.")
+    + ". Set `regions` or `regions_bed` in the project config, keyed by genome build.")
 
 
 # Define rules to be run locally when using a compute cluster
@@ -88,18 +90,50 @@ rule _mrna_ashm_tally_input_bam:
         op.absolute_symlink(input.bai, output.bai)
 
 
-# Writes the configured regions for one genome build as a table the tally script reads
+# Writes the regions for one genome build as a table the tally script reads,
+# from the bed when one is configured for the build, else from `regions`.
+# Overlapping and abutting intervals are merged and the table is sorted, so no
+# base is reported twice and the per-sample output can be tabix-indexed.
+def _mrna_ashm_tally_regions_bed(wildcards):
+    bed = _REGIONS_BED.get(wildcards.genome_build)
+    return [bed] if bed else []
+
+
 rule _mrna_ashm_tally_regions:
+    input:
+        bed = _mrna_ashm_tally_regions_bed
     output:
         regions = CFG["dirs"]["inputs"] + "regions/{genome_build}.tsv"
     run:
-        rows = []
-        for name, coord in config["lcr-modules"]["mrna_ashm_tally"]["regions"][wildcards.genome_build].items():
-            chrom, span = coord.split(":")
-            start, end = span.split("-")
-            rows.append({"region": name, "chrom": chrom,
-                         "start": int(start), "end": int(end)})
-        pd.DataFrame(rows).to_csv(output.regions, sep="\t", index=False)
+        # 0-based half-open intervals
+        ivs = []
+        if input.bed:
+            with open(input.bed[0]) as fh:
+                for line in fh:
+                    if not line.strip() or line.startswith(("#", "track", "browser")):
+                        continue
+                    f = line.rstrip("\n").split("\t")
+                    name = f[3] if len(f) > 3 and f[3] else f"{f[0]}:{int(f[1]) + 1}-{f[2]}"
+                    ivs.append((f[0], int(f[1]), int(f[2]), name))
+        else:
+            for name, coord in _REGIONS[wildcards.genome_build].items():
+                chrom, span = coord.split(":")
+                start, end = span.split("-")
+                ivs.append((chrom, int(start) - 1, int(end), name))
+        ivs.sort(key = lambda x: (x[0], x[1], x[2]))
+        merged = []
+        for chrom, start, end, name in ivs:
+            if merged and merged[-1][0] == chrom and start <= merged[-1][2]:
+                m = merged[-1]
+                m[2] = max(m[2], end)
+                if name not in m[3]:
+                    m[3].append(name)
+            else:
+                merged.append([chrom, start, end, [name]])
+        pd.DataFrame(
+            [{"region": ",".join(n), "chrom": c, "start": s + 1, "end": e}
+             for c, s, e, n in merged]
+        ).to_csv(output.regions, sep="\t", index=False)
 
 
 rule _mrna_ashm_tally_run:
@@ -109,9 +143,12 @@ rule _mrna_ashm_tally_run:
         regions = str(rules._mrna_ashm_tally_regions.output.regions),
         fasta = reference_files("genomes/{genome_build}/genome_fasta/genome.fa")
     output:
-        tally = CFG["dirs"]["tally"] + "{seq_type}--{genome_build}/{sample_id}.tally.tsv"
+        tally = CFG["dirs"]["tally"] + "{seq_type}--{genome_build}/{sample_id}.tally.tsv.gz",
+        tbi = CFG["dirs"]["tally"] + "{seq_type}--{genome_build}/{sample_id}.tally.tsv.gz.tbi"
     log:
         stderr = CFG["logs"]["tally"] + "{seq_type}--{genome_build}/{sample_id}.tally.stderr.log"
+    benchmark:
+        CFG["dirs"]["tally"] + "{seq_type}--{genome_build}/{sample_id}.tally.benchmark.tsv"
     params:
         script = CFG["inputs"]["tally_script"],
         min_mapq = CFG["options"]["min_mapq"],
@@ -159,20 +196,23 @@ rule _mrna_ashm_tally_aggregate:
         **CFG["resources"]["aggregate"]
     shell:
         op.as_one_line("""
-        head -n 1 {input.tally[0]} | gzip > {output.tally}
+        gzip -dc {input.tally[0]} | head -n 1 | gzip > {output.tally}
         &&
-        tail -q -n +2 {input.tally} | gzip >> {output.tally}
+        for f in {input.tally}; do gzip -dc $f | tail -n +2; done | gzip >> {output.tally}
         """)
 
 
 # Symlinks the final output files into the module results directory (under '99-outputs/')
 rule _mrna_ashm_tally_output_tsv:
     input:
-        tally = str(rules._mrna_ashm_tally_run.output.tally)
+        tally = str(rules._mrna_ashm_tally_run.output.tally),
+        tbi = str(rules._mrna_ashm_tally_run.output.tbi)
     output:
-        tally = CFG["dirs"]["outputs"] + "{seq_type}--{genome_build}/{sample_id}.tally.tsv"
+        tally = CFG["dirs"]["outputs"] + "{seq_type}--{genome_build}/{sample_id}.tally.tsv.gz",
+        tbi = CFG["dirs"]["outputs"] + "{seq_type}--{genome_build}/{sample_id}.tally.tsv.gz.tbi"
     run:
         op.relative_symlink(input.tally, output.tally, in_module = True)
+        op.relative_symlink(input.tbi, output.tbi, in_module = True)
 
 
 # Generates the target sentinels for each run, which generate the symlinks
@@ -189,6 +229,7 @@ rule _mrna_ashm_tally_all:
             zip,
             seq_type = _SAMPLES.drop_duplicates(["seq_type", "genome_build"])["seq_type"],
             genome_build = _SAMPLES.drop_duplicates(["seq_type", "genome_build"])["genome_build"])
+        if _MERGE else []
 
 
 ##### CLEANUP #####

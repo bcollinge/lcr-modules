@@ -15,12 +15,20 @@ lcr-modules:
         # samples needs an entry, and the module fails at setup if one is absent.
         regions: {}
 
+        # Alternatively a bed file per genome build (0-based half-open, region
+        # name in column 4), used in place of `regions` for that build.
+        # Overlapping intervals are merged and their names joined with ",".
+        regions_bed: {}
+
         options:
             # reads below these are excluded from the counts; a base is only
             # counted where both pass
             min_mapq: 1
             min_baseq: 10
             max_depth: 100000
+            # also write one merged table per seq_type and build; at many regions
+            # its size approaches the sum of the per-sample tallies
+            merge: True
 
         conda_envs:
             pysam: "{MODSDIR}/envs/pysam-0.21.0.yaml"
