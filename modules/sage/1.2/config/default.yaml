@@ -15,6 +15,8 @@ lcr-modules:
         options:
             sage_run: "-skip_bqr -skip_msi_jitter -log_level DEBUG"
             sage_jar: "{MODSDIR}/jar/sage-5.1-jar-with-dependencies.jar"
+            # Bed (or bed.gz) restricting calling to its intervals via -specific_regions; "" calls the main chromosomes.
+            region_bed: ""
 
 
         conda_envs:
