@@ -123,10 +123,9 @@ rule _download_sage_references:
         """)
 
 
-def _sage_region_bed(wildcards):
-    # options.region_bed, when set, restricts calling to that bed's intervals (bed or bed.gz, main chromosomes only)
-    bed = CFG["options"].get("region_bed", "")
-    return [bed] if bed else []
+# options.region_bed, when set, restricts calling to that bed's intervals (bed or bed.gz, main chromosomes only);
+# read at parse time because CFG is gone when input functions run
+_SAGE_REGION_BED = [CFG["options"]["region_bed"]] if CFG["options"].get("region_bed", "") else []
 
 
 # Variant calling rule
@@ -140,7 +139,7 @@ rule _run_sage:
         cache = ancient(str(rules._download_sage_references.output.cache)),
         panel_bed = str(rules._download_sage_references.output.panel_bed),
         main_chromosomes = reference_files("genomes/{genome_build}/genome_fasta/main_chromosomes.txt"),
-        region_bed = _sage_region_bed
+        region_bed = _SAGE_REGION_BED
     output:
         vcf = temp(CFG["dirs"]["sage"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}--{normal_id}--{pair_status}.vcf"),
         vcf_gz = temp(CFG["dirs"]["sage"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}--{normal_id}--{pair_status}.vcf.gz")
