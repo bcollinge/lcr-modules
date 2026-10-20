@@ -53,5 +53,5 @@ mateOrientation = FR
 shiftInQuality = phredQuality
 SNPfile = DBsnpFile
 minimalCoveragePerPosition = minCovPerPos
-minimumQualityPerPosition = minQualPerPos
+minimalQualityPerPosition = minQualPerPos
 
