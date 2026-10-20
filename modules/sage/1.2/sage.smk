@@ -123,14 +123,6 @@ rule _download_sage_references:
         """)
 
 
-def _sage_capture_bed(wildcards):
-    # Capture samples are called only inside their capture space; genomes get no bed
-    if wildcards.seq_type != "capture":
-        return []
-    CFG = config["lcr-modules"]["sage"]
-    return reference_files(op.get_capture_space(CFG, wildcards.tumour_id, wildcards.genome_build, wildcards.seq_type, "bed.gz"))
-
-
 # Variant calling rule
 rule _run_sage:
     input:
@@ -142,7 +134,6 @@ rule _run_sage:
         cache = ancient(str(rules._download_sage_references.output.cache)),
         panel_bed = str(rules._download_sage_references.output.panel_bed),
         main_chromosomes = reference_files("genomes/{genome_build}/genome_fasta/main_chromosomes.txt"),
-        capture_bed = _sage_capture_bed
     output:
         vcf = temp(CFG["dirs"]["sage"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}--{normal_id}--{pair_status}.vcf"),
         vcf_gz = temp(CFG["dirs"]["sage"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{tumour_id}--{normal_id}--{pair_status}.vcf.gz")
@@ -169,24 +160,11 @@ rule _run_sage:
         &&
         SAGE_CHROMOSOMES=$(cat {input.main_chromosomes} | paste -sd ";" -)
         &&
-        SAGE_MAIN="-cp {params.sage_jar} com.hartwig.hmftools.sage.SageApplication" ;
-        SAGE_REGIONS="-specific_chr $SAGE_CHROMOSOMES" ;
-        if [ -n "{input.capture_bed}" ] ; then
-            SAGE_ARGS={output.vcf}.args ;
-            printf -- "-cp {params.sage_jar}\\ncom.hartwig.hmftools.sage.SageApplication\\n-specific_regions " > $SAGE_ARGS ;
-            gzip -dc {input.capture_bed}
-            | awk 'NR == FNR {{keep[$1]; next}} $1 in keep' {input.main_chromosomes} -
-            | sort -k1,1 -k2,2n
-            | awk '{{if ($1 == c && $2 <= e) {{if ($3 > e) e = $3}} else {{if (c != "") print c ":" s + 1 "-" e; c = $1; s = $2; e = $3}}}} END {{if (c != "") print c ":" s + 1 "-" e}}'
-            | paste -sd ";" - >> $SAGE_ARGS ;
-            SAGE_MAIN="@$SAGE_ARGS" ;
-            SAGE_REGIONS="" ;
-        fi ;
         java -Xms1G -Xmx{params.jvmheap}m
-        $SAGE_MAIN
+        -cp {params.sage_jar} com.hartwig.hmftools.sage.SageApplication
         -threads {threads}
         {params.opts}
-        $SAGE_REGIONS
+        -specific_chr $SAGE_CHROMOSOMES
         -reference {wildcards.normal_id}
         -reference_bam {input.normal_bam}
         -tumor {wildcards.tumour_id}
