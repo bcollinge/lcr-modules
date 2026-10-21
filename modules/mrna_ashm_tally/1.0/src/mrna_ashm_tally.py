@@ -13,6 +13,11 @@ regions: a headed TSV with columns region, chrom, start, end (1-based inclusive)
 sorted and non-overlapping. The output is bgzip-compressed and tabix-indexed
 (OUT.tbi) on chrom and pos.
 Contigs are matched with or without a "chr" prefix, whichever the alignment uses.
+
+Consecutive regions on a chromosome that share a name (a comma-separated list)
+are read in one pileup spanning them, so a spliced read covering several exons
+of a gene is processed once rather than once per exon. Only region positions
+are reported.
 """
 import argparse
 import csv
@@ -22,6 +27,19 @@ import sys
 import pysam
 
 BASES = ("A", "C", "G", "T")
+
+
+def spans(regions):
+    """Group consecutive regions on one chromosome that share a name."""
+    groups = []
+    for r in regions:
+        names = set(r["region"].split(","))
+        if groups and groups[-1][-1]["chrom"] == r["chrom"] and names & groups[-1][-1]["_names"]:
+            groups[-1].append(r)
+        else:
+            groups.append([r])
+        r["_names"] = names
+    return groups
 
 
 def main():
@@ -58,37 +76,42 @@ def main():
         w = csv.writer(out, delimiter="\t", lineterminator="\n")
         w.writerow(["sample_id", "region", "chrom", "pos", "ref", "depth", *BASES])
 
-        for r in regions:
-            bare = r["chrom"][3:] if r["chrom"].startswith("chr") else r["chrom"]
+        for group in spans(regions):
+            bare = group[0]["chrom"][3:] if group[0]["chrom"].startswith("chr") else group[0]["chrom"]
             chrom = ("chr" + bare) if prefixed else bare
-            start, end = int(r["start"]), int(r["end"])
-            refseq = fa.fetch(chrom, start - 1, end).upper()
-            counts = {p: [0, 0, 0, 0] for p in range(start, end + 1)}
+            first, last = int(group[0]["start"]), int(group[-1]["end"])
+            counts = {p: [0, 0, 0, 0] for r in group
+                      for p in range(int(r["start"]), int(r["end"]) + 1)}
 
             # an unreadable container raises during iteration rather than at
-            # pileup(); the region is then reported at zero depth instead of
+            # pileup(); the span is then reported at zero depth instead of
             # aborting the sample
             try:
-                for col in af.pileup(chrom, start - 1, end, truncate=True,
+                for col in af.pileup(chrom, first - 1, last, truncate=True,
                                      stepper="samtools",
                                      min_mapping_quality=args.min_mapq,
                                      min_base_quality=args.min_baseq,
                                      ignore_overlaps=True,
                                      max_depth=args.max_depth,
                                      multiple_iterators=False):
-                    c = counts[col.reference_pos + 1]
+                    c = counts.get(col.reference_pos + 1)
+                    if c is None:
+                        continue
                     for b in col.get_query_sequences(add_indels=False):
                         b = b.upper()
                         if b in BASES:
                             c[BASES.index(b)] += 1
             except (ValueError, OSError):
-                n_fail += 1
-                counts = {p: [0, 0, 0, 0] for p in range(start, end + 1)}
+                n_fail += len(group)
+                counts = {p: [0, 0, 0, 0] for p in counts}
 
-            for p in range(start, end + 1):
-                c = counts[p]
-                w.writerow([args.sample, r["region"], bare, p,
-                            refseq[p - start], sum(c), *c])
+            for r in group:
+                start, end = int(r["start"]), int(r["end"])
+                refseq = fa.fetch(chrom, start - 1, end).upper()
+                for p in range(start, end + 1):
+                    c = counts[p]
+                    w.writerow([args.sample, r["region"], bare, p,
+                                refseq[p - start], sum(c), *c])
 
     af.close()
     fa.close()
