@@ -93,6 +93,12 @@ Authored by Sierra Gillis
 
 ## [1.3] - 2026-10-09
 
+- `options.control_ratio_only` (default False, unchanged behaviour). True drops the mini-pileup inputs, the
+  `miniPileup` lines and the `[BAF]` section from config_WGS.txt, so no pileup jobs run and FREEC
+  writes no _BAF.txt; the BAF plot, CNVs.seg and seg projections are not built (cnv2igv reads the
+  genotype and somatic/germline columns FREEC writes only with BAF). With no SNPfile and
+  forceGCcontentNormalization 0 FREEC takes its control-based path (tumour counts divided by control counts);
+  with an SNPfile present, 0 GC-fits the tumour alone. Count cache paths are unchanged.
 - `options.cache_by_bam` (default False, unchanged behaviour). True keys the count cache and the
   mini-pileups by the source BAM (real path and size) under `count_cache/bam--{genome_build}/<key>/`
   and `01-mpileup/bam--{genome_build}/<key>/`, read straight from the source BAM rather than the

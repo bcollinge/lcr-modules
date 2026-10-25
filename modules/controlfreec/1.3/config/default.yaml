@@ -73,6 +73,8 @@ lcr-modules:
             cache_by_bam: False
 
             #BAF options:
+            # True: no mini-pileups, no miniPileup lines and no [BAF] section (so no SNPfile), so with forceGCcontentNormalization 0 FREEC divides by the control; no _BAF.txt, BAF plot or CNVs.seg / projections
+            control_ratio_only: False
             minimalCoveragePerPosition: 10 # for BAF: minimum position coverage default is 0
             minQualityPerPosition: 20 # for BAF: minimum base quality
             shiftInQuality: 0 # basis for Phred quality
