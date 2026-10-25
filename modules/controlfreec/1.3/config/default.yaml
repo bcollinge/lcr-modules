@@ -42,7 +42,7 @@ lcr-modules:
                 # 3: make a separate fragment of the unknown region and attach to left/right, choosing the longer one, BUT known region should make at least half size of the unknown region
                 # 4: make a separate fragment of the unknown region and do not assign any copy number to this region at all
             coefficientOfVariation: 0.062 # coefficient used to evaluate window size - the lower, the more windows; wil be overruled if optional options step and window are non-empty!!
-            degree: '3\&4' # degree of polynomial - 3&4 for WGS (GC-based normalization); 1 for WES (control-read-count-based normalization). You can comment out degree to let control-freec choose.
+            degree: '3\&4' # degree of polynomial - 3&4 for WGS (GC-based normalization); 1 for WES (control-read-count-based normalization). An empty string drops the degree line from the rendered config so control-freec tries 3 and 4.
             forceGCcontentNormalization: 1 # 0 for WGS; 1 for WES # 0 forces control-base normalization, 1 forces GC
             intercept: 1 # 0 for control-based (paired) ; 1 for GC-content (unpaired)
             minCNAlength: 8 # minimum number of consecutive windows to call a CNA #default 1 for WGS; 3 for WES
