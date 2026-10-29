@@ -23,7 +23,9 @@ import glob as glob
 CFG = op.setup_module(
     name = "vcf2maf",
     version = "1.3",
-    subdirectories = ["inputs","decompressed","vcf2maf","crossmap", "normalize", "outputs"]
+    subdirectories = ["inputs","decompressed","vcf2maf","crossmap", "normalize"]
+        + (["second_cut"] if config["lcr-modules"]["vcf2maf"].get("options", {}).get("second_cut", {}).get("enabled", False) else [])
+        + ["outputs"]
 )
 
 # Define rules to be run locally when using a compute cluster
@@ -467,6 +469,73 @@ rule _vcf2maf_reannotate:
         """)
 
 
+_VCF2MAF_SECOND_CUT = CFG["options"].get("second_cut", {}).get("enabled", False)
+_VCF2MAF_SECOND_CUT_KEEP = CFG["options"].get("second_cut", {}).get("keep_lookup", False)
+
+# Second cut (options.second_cut): projected MAF rows looked up by exact allele in the landing build's release; rows with
+# AF above the cut-off move to a dropped MAF. Native MAFs are not touched.
+if _VCF2MAF_SECOND_CUT:
+    def _vcf2maf_second_cut_release(wildcards, releases=dict(CFG["options"]["second_cut"].get("release", {}))):
+        r = releases[wildcards.target_build]
+        return {"gnomad": reference_files(f"genomes/{r['build']}/variation/{r['stem']}.{r['build']}.vcf.gz"),
+                "fasta": reference_files(f"genomes/{r['build']}/genome_fasta/genome.fa")}
+
+    rule _vcf2maf_second_cut_vcf:
+        input:
+            unpack(_vcf2maf_second_cut_release),
+            maf = str(rules._vcf2maf_reannotate.output.maf)
+        output:
+            vcf = CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.vcf" if _VCF2MAF_SECOND_CUT_KEEP else temp(CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.vcf")
+        log:
+            stderr = CFG["logs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.stderr.log"
+        params:
+            script = CFG["inputs"]["maf_rows_to_vcf"]
+        conda:
+            CFG["conda_envs"]["pysam"]
+        wildcard_constraints:
+            target_build = "hg38|hg19",
+            base_name = CFG["vcf_base_name"]
+        shell:
+            "python {params.script} {input.maf} {input.fasta} {output.vcf} 2> {log.stderr}"
+
+    rule _vcf2maf_second_cut:
+        input:
+            unpack(_vcf2maf_second_cut_release),
+            maf = str(rules._vcf2maf_reannotate.output.maf),
+            vcf = str(rules._vcf2maf_second_cut_vcf.output.vcf)
+        output:
+            maf = temp(CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.kept.{maf}"),
+            dropped = CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.dropped.{maf}",
+            **({"af": CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.kept.{maf}.af.tsv"} if _VCF2MAF_SECOND_CUT_KEEP else {})
+        log:
+            stderr = CFG["logs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.second_cut.stderr.log"
+        params:
+            cutoff = CFG["options"]["second_cut"].get("cutoff", 0.001),
+            atomize = int(bool(CFG["options"].get("gnomad_atomize", False))),
+            lookup = CFG["inputs"]["gnomad_lookup"],
+            rm_af = lambda wildcards, output: "" if _VCF2MAF_SECOND_CUT_KEEP else f"&& rm {output.maf}.af.tsv"
+        conda:
+            CFG["conda_envs"]["bcftools_lookup"]
+        container:
+            CFG["container_envs"]["bcftools_lookup"]
+        wildcard_constraints:
+            target_build = "hg38|hg19",
+            base_name = CFG["vcf_base_name"]
+        shell:
+            op.as_one_line("""
+            bash {params.lookup} {input.vcf} {input.fasta} {input.gnomad} SC_AF {params.atomize} {output.maf}.lookup_tmp 2> {log.stderr}
+                |
+            bcftools query -f '%ID\\t%INFO/SC_AF\\n' > {output.maf}.af.tsv 2>> {log.stderr}
+                &&
+            awk -F'\\t' -v c={params.cutoff} -v d={output.dropped} 'BEGIN{{OFS="\\t"}}
+                NR==FNR {{m=0; k=split($2, v, ","); for (i=1; i<=k; i++) if (v[i]+0 > m) m=v[i]+0; af[$1]=m; next}}
+                /^#/ {{print; print > d; next}}
+                !h {{print; print > d; h=1; next}}
+                {{n++; if ((n in af) && af[n] > c) print > d; else print}}'
+                {output.maf}.af.tsv {input.maf} > {output.maf}
+            {params.rm_af}
+            """)
+
 def get_normalize_input(wildcards, todo_only = False):
     CFG = config["lcr-modules"]["vcf2maf"]
     new_genome_build  = wildcards.target_build
@@ -504,7 +573,7 @@ def get_normalize_input(wildcards, todo_only = False):
         # Source doesn't match. CrossMap and normalization necessary.
         target_build = "hg38" if new_genome_version == "grch38" else "hg19"
         maf = expand(
-            rules._vcf2maf_reannotate.output.maf,
+            rules._vcf2maf_second_cut.output.maf if _VCF2MAF_SECOND_CUT else rules._vcf2maf_reannotate.output.maf,
             target_build = target_build,
             allow_missing = True
         )
