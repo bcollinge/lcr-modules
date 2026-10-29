@@ -97,16 +97,37 @@ rule _vcf2maf_input_bam:
         op.absolute_symlink(input.bam, output.bam)
         op.absolute_symlink(input.bai, output.bai)
 
+# Normalized gnomAD sites VCF stem per genome build (options.gnomad_resource); unlisted builds use
+# af-only-gnomad.normalized.
+def _vcf2maf_normalized_gnomad(wildcards, stems=dict(CFG["options"].get("gnomad_resource", {}))):
+    stem = stems.get(wildcards.genome_build, "af-only-gnomad.normalized")
+    return reference_files(f"genomes/{wildcards.genome_build}/variation/{stem}.{wildcards.genome_build}.vcf.gz")
+
+_VCF2MAF_CALLSIDE = CFG["options"].get("gnomad_callside", False)
+
+# Writes the input VCF with INFO/gnomADg_AF to {output.vcf}. With options.gnomad_callside, a split, left-aligned copy of
+# the calls (MNVs also split with options.gnomad_atomize) is looked up by exact allele and the AF written back onto the
+# original records, 0 when absent.
+def _vcf2maf_gnomad_cmd(wildcards, input, output, threads, script=CFG["inputs"]["gnomad_lookup"],
+                        atomize=int(bool(CFG["options"].get("gnomad_atomize", False)))):
+    if not _VCF2MAF_CALLSIDE:
+        return f'bcftools annotate --threads {threads} -a {input.normalized_gnomad} {input.vcf} -c "INFO/gnomADg_AF:=INFO/AF" -o {output.vcf}'
+    return (f"bash {script} {input.vcf} {input.fasta} {input.normalized_gnomad} "
+            f"gnomADg_AF {atomize} {output.vcf}.tmp > {output.vcf}")
+
 rule _vcf2maf_annotate_gnomad:
     input:
         vcf = str(rules._vcf2maf_input_vcf.output.vcf_gz),
-        normalized_gnomad = reference_files("genomes/{genome_build}/variation/af-only-gnomad.normalized.{genome_build}.vcf.gz")
+        normalized_gnomad = _vcf2maf_normalized_gnomad,
+        fasta = lambda w: reference_files(f"genomes/{w.genome_build}/genome_fasta/genome.fa") if _VCF2MAF_CALLSIDE else []
     output:
         vcf = temp(CFG["dirs"]["decompressed"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.annotated.vcf")
+    params:
+        gnomad_cmd = _vcf2maf_gnomad_cmd
     conda:
-        CFG["conda_envs"]["bcftools"]
+        CFG["conda_envs"]["bcftools_lookup" if _VCF2MAF_CALLSIDE else "bcftools"]
     container:
-        "docker://quay.io/biocontainers/bcftools:1.10.2--h4f4756c_3"
+        CFG["container_envs"]["bcftools_lookup"] if _VCF2MAF_CALLSIDE else "docker://quay.io/biocontainers/bcftools:1.10.2--h4f4756c_3"
     resources:
         **CFG["resources"]["annotate"]
     threads:
@@ -116,7 +137,7 @@ rule _vcf2maf_annotate_gnomad:
     group: "vcf_and_annotate"
     shell:
         op.as_one_line("""
-        bcftools annotate --threads {threads} -a {input.normalized_gnomad} {input.vcf} -c "INFO/gnomADg_AF:=INFO/AF" -o {output.vcf}
+        {params.gnomad_cmd}
         """)
 
 rule _vcf2maf_run:
