@@ -16,6 +16,7 @@ lcr-modules:
             # Available wildcards: {seq_type} {genome_build} {sample_id}
             sample_bam: "__UPDATE__"
             sample_bai: "__UPDATE__"
+            gnomad_lookup: "{SCRIPTSDIR}/gnomad_lookup/1.0/gnomad_lookup.sh" # used with options.gnomad_callside
 
         module_versions:
             manta: "2.3" # Minimum: 2.0
@@ -29,12 +30,18 @@ lcr-modules:
 
         conda_envs:
             bcftools: "{MODSDIR}/envs/bcftools-1.10.2.yaml"
+            bcftools_lookup: "{SCRIPTSDIR}/gnomad_lookup/1.0/gnomad_lookup-1.yaml"
 
         container_envs:
             bcftools: "docker://quay.io/biocontainers/bcftools:1.10.2--h4f4756c_3"
+            bcftools_lookup: "docker://quay.io/biocontainers/bcftools:1.17--haef29d1_0"
 
         options: 
             cleanup_vcfs: False # Boolean True or False. Indicate whether temp VCF files generated as part of SLMS-3 should be removed upon completion. 
+            gnomad_resource: {} # genome_build: gnomAD stem under genomes/{genome_build}/variation/ for the three gnomAD filters; unlisted builds use af-only-gnomad
+            gnomad_callside: False # True: the three gnomAD filters look up a split, left-aligned copy of the calls in the (normalized) resource and write INFO/AF back onto the original records
+            gnomad_atomize: False # with gnomad_callside: MNVs are also split into SNVs in the copy (bcftools norm -a); an MNV gets the max AF over its bases
+            gnomad_dropped: False # True: the three gnomAD filters also write the records they remove to {caller}.gnomad_dropped.tsv.gz (needs gnomad_callside)
             
         threads:
             strelka_gnomad: 4
@@ -44,6 +51,7 @@ lcr-modules:
             mutect2_depth_filt: 4
             rename_all: 4
             union_vcf: 4
+            gnomad_lookup: 1
 
         resources:
             strelka_gnomad: 
@@ -60,6 +68,8 @@ lcr-modules:
                 mem_mb: 2000
             union_vcf: 
                 mem_mb: 5000
+            gnomad_lookup:
+                mem_mb: 4000
 
         pairing_config:
             genome:

@@ -43,7 +43,9 @@ if version.parse(current_version) < version.parse(min_oncopipe_version):
 CFG_SLMS3 = op.setup_module(
     name = "slms_3",
     version = "1.0",
-    subdirectories = ["inputs", "strelka_gnomad", "lofreq_gnomad", "strelka_lofreq_union", "sage_gnomad", "mutect2_depth_filt", "union", "outputs"],
+    subdirectories = ["inputs", "strelka_gnomad", "lofreq_gnomad", "strelka_lofreq_union", "sage_gnomad", "mutect2_depth_filt", "union"]
+        + (["gnomad_lookup"] if config["lcr-modules"]["slms_3"].get("options", {}).get("gnomad_callside", False) else [])
+        + ["outputs"],
 )
 
 # Ensure each of the submodule versions meets requirements. 
@@ -143,13 +145,78 @@ rule _slms_3_input_lofreq_vcf:
         op.relative_symlink(input.vcf, output.vcf, in_module = True)
         op.relative_symlink(input.vcf + ".tbi", output.tbi, in_module = True)
 
+# gnomAD sites VCF stem per genome build (options.gnomad_resource); unlisted builds use af-only-gnomad.
+def _slms_3_gnomad(wildcards, stems=dict(CFG_SLMS3["options"].get("gnomad_resource", {}))):
+    stem = stems.get(wildcards.genome_build, "af-only-gnomad")
+    return reference_files(f"genomes/{wildcards.genome_build}/variation/{stem}.{wildcards.genome_build}.vcf.gz")
+
+_SLMS3_CALLSIDE = CFG_SLMS3["options"].get("gnomad_callside", False)
+
+# Call-side lookup (options.gnomad_callside): a split, left-aligned copy of the caller VCF (MNVs also split with
+# options.gnomad_atomize) is looked up by exact allele in the normalized resource; INFO/AF is written back onto the
+# original records, 0 when absent.
+def _slms_3_lookup_vcf(wildcards):
+    return {"strelka": str(rules._slms_3_input_strelka_vcf.output.vcf),
+            "lofreq": str(rules._slms_3_input_lofreq_vcf.output.vcf),
+            "sage": str(rules._slms_3_input_sage_vcf.output.vcf)}[wildcards.caller]
+
+if _SLMS3_CALLSIDE:
+    _SLMS3_KEEP_LOOKUP = CFG_SLMS3["options"].get("gnomad_dropped", False)
+    _SLMS3_LOOKUP_VCF = CFG_SLMS3["dirs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_af.vcf.gz"
+    rule _slms_3_gnomad_lookup:
+        input:
+            vcf = _slms_3_lookup_vcf,
+            gnomad = _slms_3_gnomad,
+            fasta = reference_files("genomes/{genome_build}/genome_fasta/genome.fa")
+        output:
+            vcf = _SLMS3_LOOKUP_VCF if _SLMS3_KEEP_LOOKUP else temp(_SLMS3_LOOKUP_VCF),
+            tbi = _SLMS3_LOOKUP_VCF + ".tbi" if _SLMS3_KEEP_LOOKUP else temp(_SLMS3_LOOKUP_VCF + ".tbi")
+        log:
+            stderr = CFG_SLMS3["logs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_lookup.stderr.log"
+        wildcard_constraints:
+            caller = "strelka|lofreq|sage"
+        params:
+            script = CFG_SLMS3["inputs"]["gnomad_lookup"],
+            atomize = int(bool(CFG_SLMS3["options"].get("gnomad_atomize", False)))
+        conda:
+            CFG_SLMS3["conda_envs"]["bcftools_lookup"]
+        container:
+            CFG_SLMS3["container_envs"]["bcftools_lookup"]
+        threads:
+            CFG_SLMS3["threads"]["gnomad_lookup"]
+        resources:
+            **CFG_SLMS3["resources"]["gnomad_lookup"]
+        shell:
+            op.as_one_line("""
+            bash {params.script} {input.vcf} {input.fasta} {input.gnomad} AF {params.atomize} {output.vcf}.tmp
+            2> {log.stderr} | bgzip > {output.vcf}
+            &&
+            tabix -p vcf {output.vcf} 2>> {log.stderr}
+            """)
+
+# With options.gnomad_callside the gnomAD filters read the lookup VCF as both the calls and the annotation source: every
+# record already carries its looked-up AF, so the annotate and AF=0 steps leave it as it is.
+def _slms_3_filter_vcf(caller, vcf):
+    def _f(wildcards):
+        if _SLMS3_CALLSIDE:
+            return expand(str(rules._slms_3_gnomad_lookup.output.vcf), caller = caller, **dict(wildcards.items()))
+        return expand(vcf, **dict(wildcards.items()))
+    return _f
+
+def _slms_3_filter_gnomad(caller):
+    def _f(wildcards):
+        if _SLMS3_CALLSIDE:
+            return expand(str(rules._slms_3_gnomad_lookup.output.vcf), caller = caller, **dict(wildcards.items()))
+        return _slms_3_gnomad(wildcards)
+    return _f
+
 # Annotate Strelka VCF and remove common GnomAD variants
 
 rule _slms_3_annotate_strelka_gnomad:
     input:
-        vcf = str(rules._slms_3_input_strelka_vcf.output.vcf),
+        vcf = _slms_3_filter_vcf("strelka", str(rules._slms_3_input_strelka_vcf.output.vcf)),
         tbi = str(rules._slms_3_input_strelka_vcf.output.tbi),
-        gnomad = reference_files("genomes/{genome_build}/variation/af-only-gnomad.{genome_build}.vcf.gz")
+        gnomad = _slms_3_filter_gnomad("strelka")
     output:
         vcf = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz.tbi"
@@ -178,9 +245,9 @@ rule _slms_3_annotate_strelka_gnomad:
 
 rule _slms_3_annotate_lofreq_gnomad:
     input: 
-        vcf = str(rules._slms_3_input_lofreq_vcf.output.vcf), 
+        vcf = _slms_3_filter_vcf("lofreq", str(rules._slms_3_input_lofreq_vcf.output.vcf)), 
         tbi = str(rules._slms_3_input_lofreq_vcf.output.tbi),
-        gnomad = reference_files("genomes/{genome_build}/variation/af-only-gnomad.{genome_build}.vcf.gz")
+        gnomad = _slms_3_filter_gnomad("lofreq")
     output: 
         vcf = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz.tbi"
@@ -235,8 +302,8 @@ rule _slms_3_strelka_lofreq_union:
 # Modify the SAGE VCF file to use `NORMAL` and `TUMOR` as sample IDs
 rule _slms_3_annotate_sage_gnomad: 
     input: 
-        vcf = str(rules._slms_3_input_sage_vcf.output.vcf), 
-        gnomad = reference_files("genomes/{genome_build}/variation/af-only-gnomad.{genome_build}.vcf.gz")
+        vcf = _slms_3_filter_vcf("sage", str(rules._slms_3_input_sage_vcf.output.vcf)), 
+        gnomad = _slms_3_filter_gnomad("sage")
     output: 
         vcf = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz.tbi"
