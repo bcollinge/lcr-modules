@@ -210,13 +210,21 @@ def _slms_3_filter_gnomad(caller):
         return _slms_3_gnomad(wildcards)
     return _f
 
+def _slms_3_filter_gnomad_tbi(caller):
+    def _f(wildcards):
+        if _SLMS3_CALLSIDE:
+            return expand(str(rules._slms_3_gnomad_lookup.output.tbi), caller = caller, **dict(wildcards.items()))
+        return []
+    return _f
+
 # Annotate Strelka VCF and remove common GnomAD variants
 
 rule _slms_3_annotate_strelka_gnomad:
     input:
         vcf = _slms_3_filter_vcf("strelka", str(rules._slms_3_input_strelka_vcf.output.vcf)),
         tbi = str(rules._slms_3_input_strelka_vcf.output.tbi),
-        gnomad = _slms_3_filter_gnomad("strelka")
+        gnomad = _slms_3_filter_gnomad("strelka"),
+        gnomad_tbi = _slms_3_filter_gnomad_tbi("strelka")
     output:
         vcf = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz.tbi"
@@ -247,7 +255,8 @@ rule _slms_3_annotate_lofreq_gnomad:
     input: 
         vcf = _slms_3_filter_vcf("lofreq", str(rules._slms_3_input_lofreq_vcf.output.vcf)), 
         tbi = str(rules._slms_3_input_lofreq_vcf.output.tbi),
-        gnomad = _slms_3_filter_gnomad("lofreq")
+        gnomad = _slms_3_filter_gnomad("lofreq"),
+        gnomad_tbi = _slms_3_filter_gnomad_tbi("lofreq")
     output: 
         vcf = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz.tbi"
@@ -303,7 +312,8 @@ rule _slms_3_strelka_lofreq_union:
 rule _slms_3_annotate_sage_gnomad: 
     input: 
         vcf = _slms_3_filter_vcf("sage", str(rules._slms_3_input_sage_vcf.output.vcf)), 
-        gnomad = _slms_3_filter_gnomad("sage")
+        gnomad = _slms_3_filter_gnomad("sage"),
+        gnomad_tbi = _slms_3_filter_gnomad_tbi("sage")
     output: 
         vcf = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz.tbi"
