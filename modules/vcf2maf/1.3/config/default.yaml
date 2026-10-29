@@ -13,6 +13,7 @@ lcr-modules:
       convert_coord: "{SCRIPTSDIR}/crossmap/1.1/convert_maf_coords.sh"
       augment_ssm: "{SCRIPTSDIR}/augment_ssm/1.0/augment_ssm.py"
       gnomad_lookup: "{SCRIPTSDIR}/gnomad_lookup/1.0/gnomad_lookup.sh" # used with options.gnomad_callside and second_cut
+      maf_rows_to_vcf: "{SCRIPTSDIR}/gnomad_lookup/1.0/maf_rows_to_vcf.py" # used with options.second_cut
       deblacklisting: "src/deblacklist_ssm.R"
       # The URL below matches the sha of the version of GAMBLR installed by the post-deploy script. 
       gamblr_config_url: "https://raw.githubusercontent.com/morinlab/GAMBLR/d8d643face5b67bdfe850aabcbfe26f82254a825/config.yml"
@@ -28,6 +29,11 @@ lcr-modules:
       maf2maf: "--cache-version 100 --species homo_sapiens --retain-cols gnomAD_AF,gnomADg_AF,blacklist_count"
       species: "homo_sapiens"
       gnomAD_cutoff: 0.001 # cut-off to be used for AF frequency of germline variants in gnomAD
+      second_cut: # projected rows looked up in the landing build's release; rows above the cut-off move to a dropped MAF
+        enabled: False
+        cutoff: 0.001 # rows with AF > cutoff are dropped
+        keep_lookup: False # True: keep the rows VCF and the looked-up AF per row ({base_name}.{filter}.kept.{maf}.af.tsv)
+        release: {} # CrossMap target (hg38|hg19): {build: <reference build>, stem: <normalized gnomAD stem>}
       gnomad_callside: False # True: gnomADg_AF is looked up for a split, left-aligned copy of the calls (lcr-scripts gnomad_lookup, bcftools 1.17) and written back onto the original records, 0 when absent
       gnomad_atomize: False # with gnomad_callside: MNVs are also split into SNVs in the copy (bcftools norm -a); an MNV gets the max AF over its bases
       target_builds: ["hg38", "grch38", "hg19", "grch37"] # Target genome builds for chr-prefixing and CrossMap
