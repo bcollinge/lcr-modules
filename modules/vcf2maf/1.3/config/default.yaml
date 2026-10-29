@@ -25,6 +25,7 @@ lcr-modules:
       #--cache-version  Version of offline cache to use with VEP (e.g. 75, 84, 91) [Default: Installed version]
       maf2maf: "--cache-version 100 --species homo_sapiens --retain-cols gnomAD_AF,gnomADg_AF,blacklist_count"
       species: "homo_sapiens"
+      gnomad_resource: {} # genome_build: normalized gnomAD stem under genomes/{genome_build}/variation/ for gnomADg_AF; unlisted builds use af-only-gnomad.normalized
       gnomAD_cutoff: 0.001 # cut-off to be used for AF frequency of germline variants in gnomAD
       target_builds: ["hg38", "grch38", "hg19", "grch37"] # Target genome builds for chr-prefixing and CrossMap
       reference_config: "__UPDATE__" # Path to the reference workflow config file. Usef to handle reference genome builds;
