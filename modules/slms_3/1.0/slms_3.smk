@@ -161,7 +161,7 @@ def _slms_3_lookup_vcf(wildcards):
             "sage": str(rules._slms_3_input_sage_vcf.output.vcf)}[wildcards.caller]
 
 if _SLMS3_CALLSIDE:
-    _SLMS3_KEEP_LOOKUP = CFG_SLMS3["options"].get("gnomad_dropped", False)
+    _SLMS3_KEEP_LOOKUP = CFG_SLMS3["options"].get("output_gnomad_filtered", False)
     _SLMS3_LOOKUP_VCF = CFG_SLMS3["dirs"]["gnomad_lookup"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{caller}.gnomad_af.vcf.gz"
     rule _slms_3_gnomad_lookup:
         input:
@@ -333,16 +333,16 @@ rule _slms_3_annotate_sage_gnomad:
         """)
 
 
-# options.gnomad_dropped (with gnomad_callside): the records each gnomAD filter removes, with the looked-up AF and the
-# failed clause, to {caller}.gnomad_dropped.tsv.gz in that filter's directory.
+# options.output_gnomad_filtered (with gnomad_callside): the variants each gnomAD filter removed, with the looked-up AF
+# and the failed clause, to {caller}.gnomad_filtered.tsv.gz in that filter's directory.
 _SLMS3_PAIR = "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/"
-_SLMS3_DROPPED_TARGETS = []
-if CFG_SLMS3["options"].get("gnomad_dropped", False):
-    assert _SLMS3_CALLSIDE, "options.gnomad_dropped requires options.gnomad_callside"
-    _SLMS3_DROPPED_TARGETS = [CFG_SLMS3["dirs"][c + "_gnomad"] + _SLMS3_PAIR + c + ".gnomad_dropped.tsv.gz" for c in ("strelka", "lofreq", "sage")]
+_SLMS3_GNOMAD_FILTERED_TARGETS = []
+if CFG_SLMS3["options"].get("output_gnomad_filtered", False):
+    assert _SLMS3_CALLSIDE, "options.output_gnomad_filtered requires options.gnomad_callside"
+    _SLMS3_GNOMAD_FILTERED_TARGETS = [CFG_SLMS3["dirs"][c + "_gnomad"] + _SLMS3_PAIR + c + ".gnomad_filtered.tsv.gz" for c in ("strelka", "lofreq", "sage")]
     # Per caller: the filter's keep clause, the awk body printing a row from the query columns, extra query fields.
     # Strelka: af when no ALT is under the cut; evs and dp from SomaticEVS and the tumour DP.
-    _SLMS3_DROPPED_SPEC = {
+    _SLMS3_GNOMAD_FILTERED_SPEC = {
         "strelka": ("INFO/AF < 0.0001 && INFO/SomaticEVS >= 10 && FMT/DP[1] >= 10",
                     'split($7, d, ","); m = 1; n = split($5, a, ","); for (i = 1; i <= n; i++) if (a[i] + 0 < m) m = a[i] + 0; '
                     'f = (m >= 0.0001) ? "af" : ""; if ($6 == "." || $6 + 0 < 10) f = f (f == "" ? "" : "+") "evs"; '
@@ -352,25 +352,25 @@ if CFG_SLMS3["options"].get("gnomad_dropped", False):
         "sage": ("INFO/AF < 0.0001", 'print $1, $2, $3, $4, $5, "af"', "")
     }
 
-    def _slms_3_dropped_cmd(wildcards, input, output):
-        keep, awk_body, fields = _SLMS3_DROPPED_SPEC[wildcards.caller]
+    def _slms_3_gnomad_filtered_cmd(wildcards, input, output):
+        keep, awk_body, fields = _SLMS3_GNOMAD_FILTERED_SPEC[wildcards.caller]
         return (f"{{ echo '# gnomAD resource: {input.gnomad}'; printf 'CHROM\\tPOS\\tREF\\tALT\\tAF\\tfailed\\n'; "
                 f"bcftools view -e '{keep}' {input.vcf} | "
                 f"bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%INFO/AF{fields}\\n' | "
                 f"awk 'BEGIN {{FS=OFS=\"\\t\"}} {{{awk_body}}}'; }} | "
                 f"gzip > {output.tsv}")
 
-    rule _slms_3_gnomad_dropped:
+    rule _slms_3_output_gnomad_filtered:
         input:
             vcf = str(rules._slms_3_gnomad_lookup.output.vcf),
             gnomad = _slms_3_gnomad
         output:
-            tsv = CFG_SLMS3["dirs"]["_parent"] + "{n}-{caller}_gnomad/" + _SLMS3_PAIR + "{caller}.gnomad_dropped.tsv.gz"
+            tsv = CFG_SLMS3["dirs"]["_parent"] + "{n}-{caller}_gnomad/" + _SLMS3_PAIR + "{caller}.gnomad_filtered.tsv.gz"
         wildcard_constraints:
             n = "[0-9]+",
             caller = "strelka|lofreq|sage"
         params:
-            cmd = _slms_3_dropped_cmd
+            cmd = _slms_3_gnomad_filtered_cmd
         conda:
             CFG_SLMS3["conda_envs"]["bcftools"]
         container:
@@ -566,7 +566,7 @@ rule _slms_3_all:
             [
                 str(rules._slms_3_output_vcf.output.isec_vcf),
                 str(rules._slms_3_output_vcf.output.union_vcf)
-            ] + _SLMS3_DROPPED_TARGETS,
+            ] + _SLMS3_GNOMAD_FILTERED_TARGETS,
             zip,  # Run expand() with zip(), not product()
             seq_type=CFG_SLMS3["runs"]["tumour_seq_type"],
             genome_build=CFG_SLMS3["runs"]["tumour_genome_build"],
