@@ -528,7 +528,7 @@ if _VCF2MAF_SECOND_CUT:
             bcftools query -f '%ID\\t%INFO/SC_AF\\n' > {output.maf}.af.tsv 2>> {log.stderr}
                 &&
             awk -F'\\t' -v c={params.cutoff} -v d={output.dropped} 'BEGIN{{OFS="\\t"}}
-                NR==FNR {{m=0; k=split($2, v, ","); for (i=1; i<=k; i++) if (v[i]+0 > m) m=v[i]+0; af[$1]=m; next}}
+                FILENAME == ARGV[1] {{m=0; k=split($2, v, ","); for (i=1; i<=k; i++) if (v[i]+0 > m) m=v[i]+0; af[$1]=m; next}}
                 /^#/ {{print; print > d; next}}
                 !h {{print; print > d; h=1; next}}
                 {{n++; if ((n in af) && af[n] > c) print > d; else print}}'
