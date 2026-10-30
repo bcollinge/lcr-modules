@@ -12,7 +12,6 @@ lcr-modules:
       project_base: "__UPDATE__" # Full absolute path to prepend to blacklist_template above
       convert_coord: "{SCRIPTSDIR}/crossmap/1.1/convert_maf_coords.sh"
       augment_ssm: "{SCRIPTSDIR}/augment_ssm/1.0/augment_ssm.py"
-      gnomad_lookup: "{SCRIPTSDIR}/gnomad_lookup/1.0/gnomad_lookup.sh" # used with options.second_cut
       maf_rows_to_vcf: "{SCRIPTSDIR}/gnomad_lookup/1.0/maf_rows_to_vcf.py" # used with options.second_cut
       deblacklisting: "src/deblacklist_ssm.R"
       # The URL below matches the sha of the version of GAMBLR installed by the post-deploy script. 
@@ -33,8 +32,7 @@ lcr-modules:
         enabled: False
         cutoff: 0.001 # rows with AF > cutoff are dropped
         keep_lookup: False # True: keep the rows VCF and the looked-up AF per row ({base_name}.{filter}.kept.{maf}.af.tsv)
-        release: {} # CrossMap target (hg38|hg19): {build: <reference build>, stem: <normalized gnomAD stem>}
-      gnomad_atomize: False # True: the second cut's lookup also splits MNVs into SNVs (bcftools norm -a); an MNV gets the max AF over its bases
+        release: {} # CrossMap target (hg38|hg19): {build: <reference build>, stem: <gnomAD stem>}
       target_builds: ["hg38", "grch38", "hg19", "grch37"] # Target genome builds for chr-prefixing and CrossMap
       reference_config: "__UPDATE__" # Path to the reference workflow config file. Usef to handle reference genome builds;
       augment: False # Whether or not mafs should be augmented with variants from tumours from the same patient
@@ -55,12 +53,10 @@ lcr-modules:
       vcf2maf: "{MODSDIR}/envs/vcf2maf-1.6.18.yaml"
       crossmap: "{SCRIPTSDIR}/crossmap/1.1/convert_maf_coords.yaml"
       bcftools: "{MODSDIR}/envs/bcftools-1.10.2.yaml"
-      bcftools_lookup: "{SCRIPTSDIR}/gnomad_lookup/1.0/gnomad_lookup-1.yaml"
       pysam: "{MODSDIR}/envs/pysam-0.18.0.yaml"
       gamblr: "{MODSDIR}/envs/gamblr.yaml"
     container_envs:
       bcftools: "docker://quay.io/biocontainers/bcftools:1.10.2--h4f4756c_3"
-      bcftools_lookup: "docker://quay.io/biocontainers/bcftools:1.17--haef29d1_0"
       crossmap: "docker://quay.io/biocontainers/crossmap:0.7.0--pyhdfd78af_0"
       gamblr: null
       pysam: null

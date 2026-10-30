@@ -500,7 +500,7 @@ if _VCF2MAF_SECOND_CUT:
 
     rule _vcf2maf_second_cut:
         input:
-            unpack(_vcf2maf_second_cut_release),
+            gnomad = lambda wildcards: _vcf2maf_second_cut_release(wildcards)["gnomad"],
             maf = str(rules._vcf2maf_reannotate.output.maf),
             vcf = str(rules._vcf2maf_second_cut_vcf.output.vcf)
         output:
@@ -511,21 +511,25 @@ if _VCF2MAF_SECOND_CUT:
             stderr = CFG["logs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.second_cut.stderr.log"
         params:
             cutoff = CFG["options"]["second_cut"].get("cutoff", 0.001),
-            atomize = int(bool(CFG["options"].get("gnomad_atomize", False))),
-            lookup = CFG["inputs"]["gnomad_lookup"],
             rm_af = lambda wildcards, output: "" if _VCF2MAF_SECOND_CUT_KEEP else f"&& rm {output.maf}.af.tsv"
         conda:
-            CFG["conda_envs"]["bcftools_lookup"]
+            CFG["conda_envs"]["bcftools"]
         container:
-            CFG["container_envs"]["bcftools_lookup"]
+            CFG["container_envs"]["bcftools"]
         wildcard_constraints:
             target_build = "hg38|hg19",
             base_name = CFG["vcf_base_name"]
         shell:
             op.as_one_line("""
-            bash {params.lookup} {input.vcf} {input.fasta} {input.gnomad} SC_AF {params.atomize} {output.maf}.lookup_tmp 2> {log.stderr}
+            bcftools view -Oz -o {output.maf}.rows.vcf.gz {input.vcf} 2> {log.stderr}
+                &&
+            bcftools index -t {output.maf}.rows.vcf.gz 2>> {log.stderr}
+                &&
+            bcftools annotate -a {input.gnomad} -c INFO/AF {output.maf}.rows.vcf.gz 2>> {log.stderr}
                 |
-            bcftools query -f '%ID\\t%INFO/SC_AF\\n' > {output.maf}.af.tsv 2>> {log.stderr}
+            bcftools query -f '%ID\\t%INFO/AF\\n' > {output.maf}.af.tsv 2>> {log.stderr}
+                &&
+            rm {output.maf}.rows.vcf.gz {output.maf}.rows.vcf.gz.tbi
                 &&
             awk -F'\\t' -v c={params.cutoff} -v d={output.dropped} 'BEGIN{{OFS="\\t"}}
                 FILENAME == ARGV[1] {{m=0; k=split($2, v, ","); for (i=1; i<=k; i++) if (v[i]+0 > m) m=v[i]+0; af[$1]=m; next}}
