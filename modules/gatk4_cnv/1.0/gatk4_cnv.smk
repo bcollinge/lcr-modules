@@ -80,7 +80,7 @@ def _gatk4_cnv_sample_row(sample_id, context):
     return rows.iloc[0]
 
 
-# Declared panels: name -> {"genome_build", "members": [(seq_type, genome_build, sample_id, patient_id)]}
+# Declared panels: name -> {"genome_build", "members": [(seq_type, genome_build, sample_id)]}
 _GC_DECLARED = {}
 for _name, _members in (CFG["panels"] or {}).items():
     if not re.fullmatch(r"[A-Za-z0-9_.]+", _name):
@@ -91,11 +91,10 @@ for _name, _members in (CFG["panels"] or {}).items():
         sys.exit(f"gatk4_cnv: panel {_name!r} spans genome builds {_builds}.")
     _GC_DECLARED[_name] = {
         "genome_build": _builds[0],
-        "members": [(r["seq_type"], r["genome_build"], r["sample_id"], r["patient_id"]) for r in _rows],
+        "members": [(r["seq_type"], r["genome_build"], r["sample_id"]) for r in _rows],
     }
 
-# Panels built: a declared panel, or a declared panel without the normals of one patient
-# (name "<panel>_minus_<patient_id>", characters outside [A-Za-z0-9_.] replaced by "_").
+# Panels built: every declared panel a sample is denoised against, with all its members.
 _GC_PANELS = {}
 _GC_RUNS = {"seq_type": [], "genome_build": [], "sample_id": [], "panel": []}
 for _sid, _panel in (CFG["denoise"] or {}).items():
@@ -105,15 +104,11 @@ for _sid, _panel in (CFG["denoise"] or {}).items():
     _decl = _GC_DECLARED[_panel]
     if _decl["genome_build"] != _row["genome_build"]:
         sys.exit(f"gatk4_cnv: {_sid!r} is {_row['genome_build']} but panel {_panel!r} is {_decl['genome_build']}.")
-    _keep = [m for m in _decl["members"] if m[3] != _row["patient_id"]]
-    _built = _panel if len(_keep) == len(_decl["members"]) else _panel + "_minus_" + re.sub(r"[^A-Za-z0-9_.]", "_", _row["patient_id"])
-    if not _keep:
-        sys.exit(f"gatk4_cnv: panel {_panel!r} holds only normals of {_sid!r}'s patient.")
-    _GC_PANELS[_built] = {"genome_build": _decl["genome_build"], "members": [m[:3] for m in _keep]}
+    _GC_PANELS[_panel] = _decl
     _GC_RUNS["seq_type"].append(_row["seq_type"])
     _GC_RUNS["genome_build"].append(_row["genome_build"])
     _GC_RUNS["sample_id"].append(_sid)
-    _GC_RUNS["panel"].append(_built)
+    _GC_RUNS["panel"].append(_panel)
 _GC_RUN_PANELS = sorted({(b, p) for b, p in zip(_GC_RUNS["genome_build"], _GC_RUNS["panel"])})
 
 
