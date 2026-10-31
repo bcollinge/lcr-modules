@@ -12,8 +12,8 @@ lcr-modules:
       project_base: "__UPDATE__" # Full absolute path to prepend to blacklist_template above
       convert_coord: "{SCRIPTSDIR}/crossmap/1.1/convert_maf_coords.sh"
       augment_ssm: "{SCRIPTSDIR}/augment_ssm/1.0/augment_ssm.py"
-      maf_rows_to_vcf: "{MODSDIR}/src/maf_rows_to_vcf.py" # used with options.second_cut
-      split_maf_by_af: "{MODSDIR}/src/split_maf_by_af.awk" # used with options.second_cut
+      maf_rows_to_vcf: "{MODSDIR}/src/maf_rows_to_vcf.py" # used with options.crossmap_gnomad_filter
+      split_maf_by_af: "{MODSDIR}/src/split_maf_by_af.awk" # used with options.crossmap_gnomad_filter
       deblacklisting: "src/deblacklist_ssm.R"
       # The URL below matches the sha of the version of GAMBLR installed by the post-deploy script. 
       gamblr_config_url: "https://raw.githubusercontent.com/morinlab/GAMBLR/d8d643face5b67bdfe850aabcbfe26f82254a825/config.yml"
@@ -28,7 +28,7 @@ lcr-modules:
       maf2maf: "--cache-version 100 --species homo_sapiens --retain-cols gnomAD_AF,gnomADg_AF,blacklist_count"
       species: "homo_sapiens"
       gnomAD_cutoff: 0.001 # cut-off to be used for AF frequency of germline variants in gnomAD
-      second_cut: # CrossMap output MAFs looked up by exact allele in the target_build gnomAD release (switches: second_cut)
+      crossmap_gnomad_filter: # CrossMap output MAFs looked up by exact allele in the target_build gnomAD release (switches: crossmap_gnomad_filter)
         enabled: False
         cutoff: 0.001 # rows with gnomAD AF > cutoff move to a dropped MAF
       target_builds: ["hg38", "grch38", "hg19", "grch37"] # Target genome builds for chr-prefixing and CrossMap
@@ -51,8 +51,8 @@ lcr-modules:
         _default: "genomes/{genome_build}/variation/gnomad.genomes_exomes.r2.1.1.anw.af.normalized.{genome_build}.vcf.gz"
         hg38: "genomes/{genome_build}/variation/gnomad.joint.v4.1.af.normalized.{genome_build}.vcf.gz"
         hg38-nci: "genomes/{genome_build}/variation/gnomad.joint.v4.1.af.normalized.{genome_build}.vcf.gz"
-      # gnomAD release and fasta per CrossMap target_build, used with options.second_cut
-      second_cut:
+      # gnomAD release and fasta per CrossMap target_build, used with options.crossmap_gnomad_filter
+      crossmap_gnomad_filter:
         gnomad:
           hg38: "genomes/hg38/variation/gnomad.joint.v4.1.af.hg38.vcf.gz"
           hg19: "genomes/grch37/variation/gnomad.genomes_exomes.r2.1.1.anw.af.grch37.vcf.gz"
@@ -79,8 +79,8 @@ lcr-modules:
       annotate: 4
       deblacklist: 1
       augment: 12
-      second_cut_vcf: 1
-      second_cut: 1
+      crossmap_gnomad_filter_vcf: 1
+      crossmap_gnomad_filter: 1
 
     resources:
       vcf2maf:
@@ -101,12 +101,12 @@ lcr-modules:
       crossmap:
         mem_mb: 12000
         crossmap: 1
-      second_cut_vcf:
+      crossmap_gnomad_filter_vcf:
         mem_mb: 2000
-        second_cut: 1
-      second_cut:
+        crossmap_gnomad_filter: 1
+      crossmap_gnomad_filter:
         mem_mb: 2000
-        second_cut: 1
+        crossmap_gnomad_filter: 1
 
     pairing_config:
       genome:

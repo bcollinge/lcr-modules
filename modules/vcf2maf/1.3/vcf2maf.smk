@@ -23,7 +23,7 @@ import glob as glob
 CFG = op.setup_module(
     name = "vcf2maf",
     version = "1.3",
-    subdirectories = ["inputs","decompressed","vcf2maf","crossmap", "normalize", "second_cut", "outputs"]
+    subdirectories = ["inputs","decompressed","vcf2maf","crossmap", "normalize", "crossmap_gnomad_filter", "outputs"]
 )
 
 # Define rules to be run locally when using a compute cluster
@@ -461,30 +461,31 @@ rule _vcf2maf_reannotate:
         """)
 
 
-_VCF2MAF_SECOND_CUT = CFG["options"]["second_cut"]["enabled"]
+_VCF2MAF_CROSSMAP_GNOMAD_FILTER = CFG["options"]["crossmap_gnomad_filter"]["enabled"]
 
-# Second cut (options.second_cut): each CrossMap output MAF is looked up by exact allele in the target_build gnomAD release;
-# rows with AF above the cut-off move to a dropped MAF. MAFs in the source genome version are not touched.
-if _VCF2MAF_SECOND_CUT:
+# CrossMap gnomAD filter (options.crossmap_gnomad_filter): each CrossMap output MAF is looked up by exact allele in the
+# target_build gnomAD release; rows with AF above the cut-off move to a dropped MAF. MAFs in the source genome version are
+# not touched.
+if _VCF2MAF_CROSSMAP_GNOMAD_FILTER:
     for _key in ["gnomad", "fasta"]:
-        assert set(CFG["switches"]["second_cut"][_key]) >= {"hg38", "hg19"}, (
-            f"vcf2maf options.second_cut is enabled: switches.second_cut.{_key} needs hg38 and hg19 entries"
+        assert set(CFG["switches"]["crossmap_gnomad_filter"][_key]) >= {"hg38", "hg19"}, (
+            f"vcf2maf options.crossmap_gnomad_filter is enabled: switches.crossmap_gnomad_filter.{_key} needs hg38 and hg19 entries"
         )
 
-    rule _vcf2maf_second_cut_vcf:
+    rule _vcf2maf_crossmap_gnomad_filter_vcf:
         input:
-            fasta = lambda w: reference_files(op.switch_on_wildcard("target_build", config["lcr-modules"]["vcf2maf"]["switches"]["second_cut"]["fasta"])(w)),
+            fasta = lambda w: reference_files(op.switch_on_wildcard("target_build", config["lcr-modules"]["vcf2maf"]["switches"]["crossmap_gnomad_filter"]["fasta"])(w)),
             maf = str(rules._vcf2maf_reannotate.output.maf)
         output:
-            vcf = temp(CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.vcf")
+            vcf = temp(CFG["dirs"]["crossmap_gnomad_filter"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.vcf")
         log:
-            stderr = CFG["logs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.stderr.log"
+            stderr = CFG["logs"]["crossmap_gnomad_filter"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.stderr.log"
         params:
             script = CFG["inputs"]["maf_rows_to_vcf"]
         threads:
-            CFG["threads"]["second_cut_vcf"]
+            CFG["threads"]["crossmap_gnomad_filter_vcf"]
         resources:
-            **CFG["resources"]["second_cut_vcf"]
+            **CFG["resources"]["crossmap_gnomad_filter_vcf"]
         conda:
             CFG["conda_envs"]["pysam"]
         container:
@@ -495,23 +496,23 @@ if _VCF2MAF_SECOND_CUT:
         shell:
             "python {params.script} {input.maf} {input.fasta} {output.vcf} 2> {log.stderr}"
 
-    rule _vcf2maf_second_cut:
+    rule _vcf2maf_crossmap_gnomad_filter:
         input:
-            gnomad = lambda w: reference_files(op.switch_on_wildcard("target_build", config["lcr-modules"]["vcf2maf"]["switches"]["second_cut"]["gnomad"])(w)),
+            gnomad = lambda w: reference_files(op.switch_on_wildcard("target_build", config["lcr-modules"]["vcf2maf"]["switches"]["crossmap_gnomad_filter"]["gnomad"])(w)),
             maf = str(rules._vcf2maf_reannotate.output.maf),
-            vcf = str(rules._vcf2maf_second_cut_vcf.output.vcf)
+            vcf = str(rules._vcf2maf_crossmap_gnomad_filter_vcf.output.vcf)
         output:
-            maf = temp(CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.kept.{maf}"),
-            dropped = CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.dropped.{maf}"
+            maf = temp(CFG["dirs"]["crossmap_gnomad_filter"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.gnomad_filtered.{filter}.{maf}"),
+            dropped = CFG["dirs"]["crossmap_gnomad_filter"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.gnomad_filtered.{filter}.dropped.{maf}"
         log:
-            stderr = CFG["logs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.second_cut.stderr.log"
+            stderr = CFG["logs"]["crossmap_gnomad_filter"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.crossmap_gnomad_filter.stderr.log"
         params:
-            cutoff = CFG["options"]["second_cut"]["cutoff"],
+            cutoff = CFG["options"]["crossmap_gnomad_filter"]["cutoff"],
             script = CFG["inputs"]["split_maf_by_af"]
         threads:
-            CFG["threads"]["second_cut"]
+            CFG["threads"]["crossmap_gnomad_filter"]
         resources:
-            **CFG["resources"]["second_cut"]
+            **CFG["resources"]["crossmap_gnomad_filter"]
         conda:
             CFG["conda_envs"]["bcftools"]
         container:
@@ -573,7 +574,7 @@ def get_normalize_input(wildcards, todo_only = False):
         # Source doesn't match. CrossMap and normalization necessary.
         target_build = "hg38" if new_genome_version == "grch38" else "hg19"
         maf = expand(
-            rules._vcf2maf_second_cut.output.maf if _VCF2MAF_SECOND_CUT else rules._vcf2maf_reannotate.output.maf,
+            rules._vcf2maf_crossmap_gnomad_filter.output.maf if _VCF2MAF_CROSSMAP_GNOMAD_FILTER else rules._vcf2maf_reannotate.output.maf,
             target_build = target_build,
             allow_missing = True
         )
