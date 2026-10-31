@@ -143,18 +143,13 @@ rule _slms_3_input_lofreq_vcf:
         op.relative_symlink(input.vcf, output.vcf, in_module = True)
         op.relative_symlink(input.vcf + ".tbi", output.tbi, in_module = True)
 
-# gnomAD sites VCF stem per genome build (options.gnomad_resource); unlisted builds use af-only-gnomad.
-def _slms_3_gnomad(wildcards, stems=dict(CFG_SLMS3["options"].get("gnomad_resource", {}))):
-    stem = stems.get(wildcards.genome_build, "af-only-gnomad")
-    return reference_files(f"genomes/{wildcards.genome_build}/variation/{stem}.{wildcards.genome_build}.vcf.gz")
-
 # Annotate Strelka VCF and remove common GnomAD variants
 
 rule _slms_3_annotate_strelka_gnomad:
     input:
         vcf = str(rules._slms_3_input_strelka_vcf.output.vcf),
         tbi = str(rules._slms_3_input_strelka_vcf.output.tbi),
-        gnomad = _slms_3_gnomad
+        gnomad = lambda w: reference_files(op.switch_on_wildcard("genome_build", CFG_SLMS3["switches"]["gnomad"])(w))
     output:
         vcf = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["strelka_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/strelka.combined.gnomad.vcf.gz.tbi"
@@ -185,7 +180,7 @@ rule _slms_3_annotate_lofreq_gnomad:
     input: 
         vcf = str(rules._slms_3_input_lofreq_vcf.output.vcf), 
         tbi = str(rules._slms_3_input_lofreq_vcf.output.tbi),
-        gnomad = _slms_3_gnomad
+        gnomad = lambda w: reference_files(op.switch_on_wildcard("genome_build", CFG_SLMS3["switches"]["gnomad"])(w))
     output: 
         vcf = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["lofreq_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/lofreq.snvs.gnomad.vcf.gz.tbi"
@@ -241,7 +236,7 @@ rule _slms_3_strelka_lofreq_union:
 rule _slms_3_annotate_sage_gnomad: 
     input: 
         vcf = str(rules._slms_3_input_sage_vcf.output.vcf), 
-        gnomad = _slms_3_gnomad
+        gnomad = lambda w: reference_files(op.switch_on_wildcard("genome_build", CFG_SLMS3["switches"]["gnomad"])(w))
     output: 
         vcf = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz", 
         tbi = CFG_SLMS3["dirs"]["sage_gnomad"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/sage.renamed.vcf.gz.tbi"

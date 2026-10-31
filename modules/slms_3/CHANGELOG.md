@@ -5,6 +5,12 @@ All notable changes to the `slms_3` module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- The Strelka, LoFreq and SAGE gnomAD filters read the gnomAD sites VCF chosen per genome_build by `switches: gnomad`:
+  gnomAD v4.1 joint for hg38 and hg38-nci, gnomAD v2.1.1 genomes + exomes (AN-weighted) for every other build.
+  af-only-gnomad is no longer requested.
+
 ## [1.0] - 2021-01-11
 
 This release was authored by Laura Hilton.

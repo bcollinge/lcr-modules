@@ -35,8 +35,14 @@ lcr-modules:
 
         options: 
             cleanup_vcfs: False # Boolean True or False. Indicate whether temp VCF files generated as part of SLMS-3 should be removed upon completion. 
-            gnomad_resource: {} # genome_build: gnomAD stem under genomes/{genome_build}/variation/ for the three gnomAD filters; unlisted builds use af-only-gnomad
-            
+
+        switches:
+            # gnomAD sites VCF per genome_build for the Strelka, LoFreq and SAGE gnomAD filters
+            gnomad:
+                _default: "genomes/{genome_build}/variation/gnomad.genomes_exomes.r2.1.1.anw.af.{genome_build}.vcf.gz"
+                hg38: "genomes/{genome_build}/variation/gnomad.joint.v4.1.af.{genome_build}.vcf.gz"
+                hg38-nci: "genomes/{genome_build}/variation/gnomad.joint.v4.1.af.{genome_build}.vcf.gz"
+
         threads:
             strelka_gnomad: 4
             lofreq_gnomad: 4

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+- `--germline-resource` is chosen per genome_build by `switches: gnomad`: gnomAD v4.1 joint for hg38 and hg38-nci,
+  gnomAD v2.1.1 genomes + exomes (AN-weighted) for every other build, each in the joined form (one record per
+  position). af-only-gnomad is no longer requested.
+
 ## [2.0] - 2020-10-08
 
 This release was authored by Laura Hilton. 
