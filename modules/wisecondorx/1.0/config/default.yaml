@@ -17,8 +17,7 @@ lcr-modules:
         # Names may use letters, digits, "_" and ".".
         references: {}
 
-        # Samples to predict, sample_id -> list of reference set names. A sample is never predicted
-        # against a set that holds a sample of its own patient_id.
+        # Samples to predict, sample_id -> list of reference set names.
         predict: {}
 
         options:

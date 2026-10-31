@@ -66,7 +66,7 @@ def _wisecondorx_sample_row(sample_id, context):
     return rows.iloc[0]
 
 
-# name -> {"genome_build": str, "members": [(seq_type, genome_build, sample_id)], "patients": set}
+# name -> {"genome_build": str, "members": [(seq_type, genome_build, sample_id)]}
 _WCX_REFS = {}
 for _name, _members in (CFG["references"] or {}).items():
     if not re.fullmatch(r"[A-Za-z0-9_.]+", _name):
@@ -81,7 +81,6 @@ for _name, _members in (CFG["references"] or {}).items():
     _WCX_REFS[_name] = {
         "genome_build": _builds[0],
         "members": [(r["seq_type"], r["genome_build"], r["sample_id"]) for r in _rows],
-        "patients": {r["patient_id"] for r in _rows},
     }
 
 # One row per (sample, reference) prediction
@@ -93,8 +92,6 @@ for _sid, _refs in (CFG["predict"] or {}).items():
             sys.exit(f"wisecondorx: predict {_sid!r} names reference {_ref!r}, which is not defined.")
         if _WCX_REFS[_ref]["genome_build"] != _row["genome_build"]:
             sys.exit(f"wisecondorx: {_sid!r} is {_row['genome_build']} but reference {_ref!r} is {_WCX_REFS[_ref]['genome_build']}.")
-        if _row["patient_id"] in _WCX_REFS[_ref]["patients"]:
-            sys.exit(f"wisecondorx: reference {_ref!r} holds a sample of {_sid!r}'s patient; exclude it from the set.")
         _WCX_PRED["seq_type"].append(_row["seq_type"])
         _WCX_PRED["genome_build"].append(_row["genome_build"])
         _WCX_PRED["sample_id"].append(_sid)
