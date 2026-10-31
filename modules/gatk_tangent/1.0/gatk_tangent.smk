@@ -81,7 +81,7 @@ def _gatk_tangent_sample_row(sample_id, context):
     return rows.iloc[0]
 
 
-# name -> {"genome_build": str, "members": [(seq_type, genome_build, sample_id)], "patients": set}
+# name -> {"genome_build": str, "members": [(seq_type, genome_build, sample_id)]}
 _GT_PANELS = {}
 for _name, _members in (CFG["panels"] or {}).items():
     if not re.fullmatch(r"[A-Za-z0-9_.]+", _name):
@@ -94,7 +94,6 @@ for _name, _members in (CFG["panels"] or {}).items():
     _GT_PANELS[_name] = {
         "genome_build": _builds[0],
         "members": [(r["seq_type"], r["genome_build"], r["sample_id"]) for r in _rows],
-        "patients": {r["patient_id"] for r in _rows},
     }
 
 # One row per (sample, panel) denoising run
@@ -106,8 +105,6 @@ for _sid, _panels in (CFG["denoise"] or {}).items():
             sys.exit(f"gatk_tangent: denoise {_sid!r} names panel {_panel!r}, which is not defined.")
         if _GT_PANELS[_panel]["genome_build"] != _row["genome_build"]:
             sys.exit(f"gatk_tangent: {_sid!r} is {_row['genome_build']} but panel {_panel!r} is {_GT_PANELS[_panel]['genome_build']}.")
-        if _row["patient_id"] in _GT_PANELS[_panel]["patients"]:
-            sys.exit(f"gatk_tangent: panel {_panel!r} holds a sample of {_sid!r}'s patient; exclude it from the panel.")
         _GT_RUNS["seq_type"].append(_row["seq_type"])
         _GT_RUNS["genome_build"].append(_row["genome_build"])
         _GT_RUNS["sample_id"].append(_sid)

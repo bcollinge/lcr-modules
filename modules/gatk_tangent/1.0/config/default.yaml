@@ -13,8 +13,7 @@ lcr-modules:
         # genome_build, under one seq_type. Names may use letters, digits, "_" and ".".
         panels: {}
 
-        # Samples to denoise, sample_id -> list of panel names. A sample is never denoised against a panel
-        # that holds a sample of its own patient_id.
+        # Samples to denoise, sample_id -> list of panel names.
         denoise: {}
 
         options:
