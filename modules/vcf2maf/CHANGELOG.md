@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for hg38 and hg38-nci, v2.1.1 genomes + exomes for every other build).
 - Optional second cut (`options.second_cut`, off by default): each CrossMap output MAF is looked up by exact allele in
   the target_build gnomAD release (`switches: second_cut`); rows with AF above `options.second_cut.cutoff` move to a
-  `dropped` MAF in `05-second_cut`. Uses `gnomad_lookup/1.0` from lcr-scripts.
+  `dropped` MAF in `05-second_cut`. The second-cut scripts ship with the module in `src/`.
 
 ## [1.3] - 2022-02-23
 

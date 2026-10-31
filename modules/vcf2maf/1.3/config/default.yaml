@@ -12,8 +12,8 @@ lcr-modules:
       project_base: "__UPDATE__" # Full absolute path to prepend to blacklist_template above
       convert_coord: "{SCRIPTSDIR}/crossmap/1.1/convert_maf_coords.sh"
       augment_ssm: "{SCRIPTSDIR}/augment_ssm/1.0/augment_ssm.py"
-      maf_rows_to_vcf: "{SCRIPTSDIR}/gnomad_lookup/1.0/maf_rows_to_vcf.py" # used with options.second_cut
-      split_maf_by_af: "{SCRIPTSDIR}/gnomad_lookup/1.0/split_maf_by_af.awk" # used with options.second_cut
+      maf_rows_to_vcf: "{MODSDIR}/src/maf_rows_to_vcf.py" # used with options.second_cut
+      split_maf_by_af: "{MODSDIR}/src/split_maf_by_af.awk" # used with options.second_cut
       deblacklisting: "src/deblacklist_ssm.R"
       # The URL below matches the sha of the version of GAMBLR installed by the post-deploy script. 
       gamblr_config_url: "https://raw.githubusercontent.com/morinlab/GAMBLR/d8d643face5b67bdfe850aabcbfe26f82254a825/config.yml"
