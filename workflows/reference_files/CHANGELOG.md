@@ -5,6 +5,11 @@ All notable changes to the `reference_files` subworkflow will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- Added gnomAD v4.1 joint (GRCh38) and gnomAD v2.1.1 genomes + exomes AN-weighted (GRCh37) sites VCFs reduced to
+  INFO/AF, their normalized copies, and joined copies (one record per position) for Mutect2 (`join_gnomad_af_vcf`).
+
 ## [2.4] - 2020-07-28
 
 This release was authored by Helena Winata.
