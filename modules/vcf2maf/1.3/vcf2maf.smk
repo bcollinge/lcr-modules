@@ -100,7 +100,7 @@ rule _vcf2maf_input_bam:
 rule _vcf2maf_annotate_gnomad:
     input:
         vcf = str(rules._vcf2maf_input_vcf.output.vcf_gz),
-        normalized_gnomad = lambda w: reference_files(op.switch_on_wildcard("genome_build", CFG["switches"]["gnomad"])(w))
+        normalized_gnomad = lambda w: reference_files(op.switch_on_wildcard("genome_build", config["lcr-modules"]["vcf2maf"]["switches"]["gnomad"])(w))
     output:
         vcf = temp(CFG["dirs"]["decompressed"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.annotated.vcf")
     conda:
@@ -473,7 +473,7 @@ if _VCF2MAF_SECOND_CUT:
 
     rule _vcf2maf_second_cut_vcf:
         input:
-            fasta = lambda w: reference_files(op.switch_on_wildcard("target_build", CFG["switches"]["second_cut"]["fasta"])(w)),
+            fasta = lambda w: reference_files(op.switch_on_wildcard("target_build", config["lcr-modules"]["vcf2maf"]["switches"]["second_cut"]["fasta"])(w)),
             maf = str(rules._vcf2maf_reannotate.output.maf)
         output:
             vcf = temp(CFG["dirs"]["second_cut"] + "{seq_type}--{target_build}/{tumour_id}--{normal_id}--{pair_status}/{base_name}.{filter}.{maf}.rows.vcf")
@@ -497,7 +497,7 @@ if _VCF2MAF_SECOND_CUT:
 
     rule _vcf2maf_second_cut:
         input:
-            gnomad = lambda w: reference_files(op.switch_on_wildcard("target_build", CFG["switches"]["second_cut"]["gnomad"])(w)),
+            gnomad = lambda w: reference_files(op.switch_on_wildcard("target_build", config["lcr-modules"]["vcf2maf"]["switches"]["second_cut"]["gnomad"])(w)),
             maf = str(rules._vcf2maf_reannotate.output.maf),
             vcf = str(rules._vcf2maf_second_cut_vcf.output.vcf)
         output:

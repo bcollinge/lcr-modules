@@ -174,7 +174,7 @@ rule _mutect2_run_matched_unmatched:
         normal_bam = CFG["dirs"]["inputs"] + "bam/{seq_type}--{genome_build}/{normal_id}.bam",
         fasta = reference_files("genomes/{genome_build}/genome_fasta/genome.fa"),
         dict = reference_files("genomes/{genome_build}/genome_fasta/genome.dict"),
-        gnomad = lambda w: reference_files(op.switch_on_wildcard("genome_build", CFG["switches"]["gnomad"])(w)),
+        gnomad = lambda w: reference_files(op.switch_on_wildcard("genome_build", config["lcr-modules"]["mutect2"]["switches"]["gnomad"])(w)),
         normal_sm = CFG["dirs"]["mutect2"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}/{normal_id}_sm.txt", 
         pon = reference_files("genomes/{genome_build}/gatk/mutect2_pon.{genome_build}.vcf.gz"), 
         candidate_positions = CFG["inputs"]["candidate_positions"] if CFG["inputs"]["candidate_positions"] else str(rules._mutect2_dummy_positions.output),
@@ -219,7 +219,7 @@ rule _mutect2_run_no_normal:
         tumour_bam = CFG["dirs"]["inputs"] + "bam/{seq_type}--{genome_build}/{tumour_id}.bam",
         fasta = reference_files("genomes/{genome_build}/genome_fasta/genome.fa"),
         dict = reference_files("genomes/{genome_build}/genome_fasta/genome.dict"),
-        gnomad = lambda w: reference_files(op.switch_on_wildcard("genome_build", CFG["switches"]["gnomad"])(w)),
+        gnomad = lambda w: reference_files(op.switch_on_wildcard("genome_build", config["lcr-modules"]["mutect2"]["switches"]["gnomad"])(w)),
         pon = reference_files("genomes/{genome_build}/gatk/mutect2_pon.{genome_build}.vcf.gz"), 
         candidate_positions = CFG["inputs"]["candidate_positions"] if CFG["inputs"]["candidate_positions"] else str(rules._mutect2_dummy_positions.output),
         capture_arg = _mutect_get_capspace
