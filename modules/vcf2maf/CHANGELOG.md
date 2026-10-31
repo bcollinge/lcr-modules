@@ -5,14 +5,6 @@ All notable changes to the `vcf2maf` module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-- gnomADg_AF is annotated from the normalized gnomAD sites VCF chosen per genome_build by `switches: gnomad` (v4.1 joint
-  for hg38 and hg38-nci, v2.1.1 genomes + exomes for every other build).
-- Optional second cut (`options.second_cut`, off by default): each CrossMap output MAF is looked up by exact allele in
-  the target_build gnomAD release (`switches: second_cut`); rows with AF above `options.second_cut.cutoff` move to a
-  `dropped` MAF in `05-second_cut`. The second-cut scripts ship with the module in `src/`.
-
 ## [1.3] - 2022-02-23
 
 This release was kind of authored by Christopher Rushton. Someone else originally authored this release
