@@ -1,0 +1,130 @@
+lcr-modules:
+
+    gatk4_cnv:
+
+        inputs:
+            # Available wildcards: {seq_type} {genome_build} {sample_id}
+            # A .bam or .cram; CRAM is decoded with the genome_build fasta.
+            sample_bam: "__UPDATE__"
+            # The index of sample_bam (.bai or .crai)
+            sample_bai: "__UPDATE__"
+            cbs_script: "{MODSDIR}/src/gatk4_cnv_cbs.R"
+            fit_script: "{MODSDIR}/src/gatk4_cnv_fit.R"
+            correct_script: "{MODSDIR}/src/gatk4_cnv_correct.R"
+            fit_capture_script: "{MODSDIR}/src/gatk4_cnv_fit_capture.R"
+            grid_script: "{MODSDIR}/src/gatk4_cnv_grid.R"
+            project_script: "{MODSDIR}/src/gatk4_cnv_project.R"
+
+        # Panels of normals, name -> list of sample_ids. Every member must be in the samples table at one
+        # genome_build, under one seq_type, in one mode and (capture) one capture_space. Names may use letters,
+        # digits, "_" and ".".
+        panels: {}
+
+        # Samples to call, sample_id -> panel name. A sample is denoised against the whole panel, which must share
+        # its genome_build, mode and (capture) capture_space.
+        denoise: {}
+
+        switches:
+            # Mode per seq_type value: "genome" (fixed-length bins over options.contigs) or "capture" (the targets of
+            # the sample's capture_space, from reference_files; the samples table must give capture_space)
+            mode:
+                _default: "genome"
+                capture: "capture"
+
+        options:
+            # Genome mode: fixed-length bins over these contigs; capture mode: targets on these contigs. One list for
+            # every build, or a dict keyed by genome_build (e.g. hg38 with "chr" names).
+            contigs: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22"]
+            bin_length: 100000
+            padding: 0
+            # CreateReadCountPanelOfNormals --minimum-interval-median-percentile
+            pon_percentile: 1.0
+            # Other CreateReadCountPanelOfNormals arguments. The requested eigensample count is capped at the
+            # number of panel samples left after filtering.
+            create_pon: >-
+                --maximum-zeros-in-sample-percentage 5.0
+                --maximum-zeros-in-interval-percentage 5.0
+                --extreme-sample-median-percentile 0.0
+                --do-impute-zeros true
+                --extreme-outlier-truncation-percentile 0.1
+                --number-of-eigensamples 20
+            # DenoiseReadCounts arguments; empty uses every eigensample in the panel
+            denoise: ""
+            cbs:
+                # Copy ratios below floor are set to floor before log2 (also the floor of the seg log ratio)
+                floor: 0.05
+                alpha: 1e-10
+                # DNAcopy undo.splits = "sdundo"
+                undo_sd: 1
+                # set.seed per run: seed_base + polynomial hash (base 31, mod 1000003) of this key; available
+                # wildcards {seq_type} {genome_build} {sample_id} {panel}
+                seed_key: "{seq_type}--{genome_build} {sample_id}--{panel}"
+                seed_base: 20261014
+            rascal:
+                distance_function: "MAD"
+                # Solution of record: lowest distance x (1 + |ploidy - 2|)^penploidy / cellularity^penalty
+                penploidy: 0.5
+                penalty: 0.5
+                # ambiguous_fit: a solution within (1 + ambiguous_distance) x the lowest distance whose cellularity
+                # differs from the lowest-distance solution's by more than ambiguous_purity
+                ambiguous_distance: 0.01
+                ambiguous_purity: 0.1
+            capture:
+                # PreprocessIntervals on the capture space targets: one interval per target
+                bin_length: 0
+                padding: 0
+                # Rascal segment weight: "span" (first target start to last target end) or "targets" (target count)
+                segment_weight: "span"
+                # Projection grid (bp, bins start at 0 on each contig) and the targets a bin needs to be called
+                grid_bin: 100000
+                min_targets_per_bin: 1
+
+        conda_envs:
+            gatk: "{MODSDIR}/envs/gatk-4.1.8.1.yaml"
+            # R with DNAcopy, data.table, ggplot2 and Rascal (installed from GitHub by the post-deploy script).
+            # An existing environment can be named instead by its prefix path.
+            rascal: "{MODSDIR}/envs/rascal-0.7.0.yaml"
+
+        threads:
+            preprocess_intervals: 1
+            annotate_intervals: 1
+            collect_read_counts: 2
+            create_pon: 4
+            denoise: 2
+            cbs: 1
+            fit: 1
+            correct: 1
+            target_grid: 1
+            project: 1
+
+        resources:
+            preprocess_intervals:
+                mem_mb: 4000
+            annotate_intervals:
+                mem_mb: 4000
+            collect_read_counts:
+                mem_mb: 8000
+            create_pon:
+                mem_mb: 16000
+            denoise:
+                mem_mb: 8000
+            cbs:
+                mem_mb: 2000
+            fit:
+                mem_mb: 4000
+            correct:
+                mem_mb: 2000
+            target_grid:
+                mem_mb: 2000
+            project:
+                mem_mb: 2000
+
+        pairing_config:
+            genome:
+                run_paired_tumours: False
+                run_unpaired_tumours_with: "no_normal"
+                run_paired_tumours_as_unpaired: True
+            capture:
+                run_paired_tumours: False
+                run_unpaired_tumours_with: "no_normal"
+                run_paired_tumours_as_unpaired: True
