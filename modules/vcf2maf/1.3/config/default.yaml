@@ -27,7 +27,7 @@ lcr-modules:
       #--cache-version  Version of offline cache to use with VEP (e.g. 75, 84, 91) [Default: Installed version]
       maf2maf: "--cache-version 100 --species homo_sapiens --retain-cols gnomAD_AF,gnomADg_AF,blacklist_count"
       species: "homo_sapiens"
-      gnomAD_cutoff: 0.001 # cut-off to be used for AF frequency of germline variants in gnomAD
+      gnomAD_cutoff: 0.0001 # rows whose reported allele (ALLELE_NUM) has gnomAD AF above this are dropped
       crossmap_gnomad_filter: # CrossMap output MAFs looked up by exact allele in the target_build gnomAD release (switches: crossmap_gnomad_filter)
         enabled: False
         cutoff: 0.001 # rows with gnomAD AF > cutoff move to a dropped MAF
@@ -54,8 +54,8 @@ lcr-modules:
       # gnomAD release and fasta per CrossMap target_build, used with options.crossmap_gnomad_filter
       crossmap_gnomad_filter:
         gnomad:
-          hg38: "genomes/hg38/variation/gnomad.joint.v4.1.af.hg38.vcf.gz"
-          hg19: "genomes/grch37/variation/gnomad.genomes_exomes.r2.1.1.anw.af.grch37.vcf.gz"
+          hg38: "genomes/hg38/variation/gnomad.joint.v4.1.af.normalized.hg38.vcf.gz"
+          hg19: "genomes/grch37/variation/gnomad.genomes_exomes.r2.1.1.anw.af.normalized.grch37.vcf.gz"
         fasta:
           hg38: "genomes/hg38/genome_fasta/genome.fa"
           hg19: "genomes/grch37/genome_fasta/genome.fa"

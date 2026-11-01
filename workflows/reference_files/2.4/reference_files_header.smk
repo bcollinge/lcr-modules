@@ -402,6 +402,7 @@ rule download_gnomad_v2_anw_af_vcf:
                 |
             awk -v c=$c 'BEGIN{{OFS="\\t"; print "##fileformat=VCFv4.2";
                 print "##INFO=<ID=AF,Number=A,Type=Float,Description=\\"AC/AN, gnomAD v2.1.1 genomes + exomes\\">";
+                print "##contig=<ID=" c ">";
                 print "#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO"}}
                 {{print c, $1, ".", $2, $3, ".", ".", "AF="sprintf("%.6g", $4)}}'
                 |

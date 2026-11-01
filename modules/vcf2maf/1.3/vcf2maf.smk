@@ -202,7 +202,7 @@ rule _vcf2maf_gnomad_filter_maf:
         maf = "maf"
     shell:
         op.as_one_line("""
-        cat {input.maf} | perl -lane 'next if /^(!?#)/; my @cols = split /\t/; @AF_all =split/,/, $cols[114]; $skip=0; for(@AF_all){{$skip++ if $_ > {params.opts}}} if ($skip) {{print STDERR;}} else {{print;}};' > {output.maf} 2>{params.temp_file}
+        cat {input.maf} | perl -lane 'next if /^(!?#)/; my @cols = split /\t/; @AF_all =split/,/, $cols[114]; $skip = $AF_all[$cols[57] - 1] > {params.opts}; if ($skip) {{print STDERR;}} else {{print;}};' > {output.maf} 2>{params.temp_file}
             &&
         gzip {params.temp_file}
             &&
