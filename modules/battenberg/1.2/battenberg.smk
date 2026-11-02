@@ -42,7 +42,7 @@ if version.parse(current_version) < version.parse(min_oncopipe_version):
 CFG = op.setup_module(
     name = "battenberg",
     version = "1.2",
-    subdirectories = ["inputs", "infer_sex", "battenberg", "convert_coordinates", "fill_regions", "normalize", "outputs"],
+    subdirectories = ["inputs", "infer_sex", "battenberg", "convert_coordinates", "fill_regions", "normalize", "refit", "outputs"],
 )
 
 #set variable for prepending to PATH based on config
@@ -65,6 +65,13 @@ BATTENBERG_VERSION_MAP = {
     "grch38-legacy": "hg38"
 
 }
+
+# Keep the files a preset rho/psi refit reads. Off by default: switching it on
+# makes finished runs that lack these files look incomplete to snakemake.
+_BATTENBERG_KEEP_REFIT_INPUTS = CFG["options"].get("keep_refit_inputs", False)
+
+def _battenberg_keep(path):
+    return path if _BATTENBERG_KEEP_REFIT_INPUTS else temp(path)
 
 ##### RULES #####
 
@@ -172,10 +179,10 @@ rule _run_battenberg:
     output:
         refit=CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_refit_suggestion.txt",
         sub=CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_subclones.txt",
-        ac=temp(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_alleleCounts.tab"),
-        mb=temp(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_mutantBAF.tab"),
-        mlrg=temp(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_mutantLogR_gcCorrected.tab"),
-        mlr=temp(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_mutantLogR.tab"),
+        ac=_battenberg_keep(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_alleleCounts.tab"),
+        mb=_battenberg_keep(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_mutantBAF.tab"),
+        mlrg=_battenberg_keep(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_mutantLogR_gcCorrected.tab"),
+        mlr=_battenberg_keep(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_mutantLogR.tab"),
         nlr=temp(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_normalLogR.tab"),
         nb=temp(CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_normalBAF.tab"),
         cp=CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_cellularity_ploidy.txt"
@@ -274,6 +281,8 @@ rule _battenberg_cleanup:
         str(rules._battenberg_to_igv_seg.output.seg)
     output:
         complete = CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/{tumour_id}_cleanup_complete.txt"
+    params:
+        rm_bafsegmented = "" if _BATTENBERG_KEEP_REFIT_INPUTS else "rm -f $d/*BAFsegmented* &&"
     group: "battenberg_post_process"
     shell:
         op.as_one_line("""
@@ -281,8 +290,58 @@ rule _battenberg_cleanup:
         rm -f $d/*impute_input* &&
         rm -f $d/*alleleFrequencies* &&
         rm -f $d/*aplotype* &&
-        rm -f $d/*BAFsegmented* && 
+        {params.rm_bafsegmented}
         touch {output.complete}
+        """)
+
+
+# Refit a finished run at a preset rho/psi (fit.copy.number with use_preset_rho_psi,
+# then callSubclones, the post-hoc plots and the refit suggestions). Needs
+# options.keep_refit_inputs.
+rule _battenberg_refit:
+    input:
+        cp = str(rules._run_battenberg.output.cp),
+        ac = str(rules._run_battenberg.output.ac),
+        mb = str(rules._run_battenberg.output.mb),
+        mlrg = str(rules._run_battenberg.output.mlrg),
+        cleanup = str(rules._battenberg_cleanup.output.complete),
+        sex_result = str(rules._run_battenberg.input.sex_result),
+        fasta = reference_files("genomes/{genome_build}/genome_fasta/genome.fa")
+    output:
+        rho_psi = CFG["dirs"]["refit"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/rho{rho}_psi{psi}/{tumour_id}_rho_and_psi.txt",
+        cp = CFG["dirs"]["refit"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/rho{rho}_psi{psi}/{tumour_id}_cellularity_ploidy.txt",
+        sub = CFG["dirs"]["refit"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/rho{rho}_psi{psi}/{tumour_id}_subclones.txt",
+        refit = CFG["dirs"]["refit"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/rho{rho}_psi{psi}/{tumour_id}_refit_suggestion.txt"
+    log:
+        stdout = CFG["logs"]["refit"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/rho{rho}_psi{psi}/{tumour_id}_refit.stdout.log",
+        stderr = CFG["logs"]["refit"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}/rho{rho}_psi{psi}/{tumour_id}_refit.stderr.log"
+    wildcard_constraints:
+        rho = r"[0-9.]+",
+        psi = r"[0-9.]+"
+    params:
+        script = CFG["inputs"]["refit_script"],
+        in_dir = CFG["dirs"]["battenberg"] + "{seq_type}--{genome_build}/{tumour_id}--{normal_id}",
+        ref = (
+            CFG["inputs"]["reference_path"] + "/{genome_build}"
+            if CFG["inputs"].get("reference_path")
+            else CFG["dirs"]["inputs"] + "reference/{genome_build}"
+        )
+    conda:
+        CFG["conda_envs"]["battenberg"]
+    container:
+        CFG["container_envs"]["battenberg"]
+    resources:
+        **CFG["resources"]["refit"]
+    threads: 1
+    shell:
+        op.as_one_line("""
+        if [[ $(head -c 4 {input.fasta}) == ">chr" ]]; then chr_flag='--chr_prefixed_genome'; else chr_flag=''; fi;
+        echo "running {rule} for {wildcards.tumour_id}--{wildcards.normal_id} on $(hostname) at $(date)" > {log.stdout};
+        sex=$(cut -f 4 {input.sex_result} | tail -n 1);
+        Rscript --vanilla {params.script} -t {wildcards.tumour_id} -i {params.in_dir}
+        -o $(dirname {output.rho_psi}) --rho {wildcards.rho} --psi {wildcards.psi}
+        --sex $sex --reference $(readlink -f {params.ref}) $chr_flag >> {log.stdout} 2>> {log.stderr} &&
+        echo "DONE {rule} for {wildcards.tumour_id}--{wildcards.normal_id} on $(hostname) at $(date)" >> {log.stdout};
         """)
 
 
