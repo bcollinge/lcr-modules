@@ -10,7 +10,7 @@ stopifnot(length(a) == 4)
 min_t = as.numeric(a[4])
 
 w = fread(a[1], colClasses = list(character = "Chromosome"))
-g = fread(a[2], colClasses = list(character = "Chromosome"))
+g = fread(a[2], colClasses = list(character = "Chromosome"))[, `:=`(bin_start = as.integer(bin_start), bin_end = as.integer(bin_end))]
 stopifnot(nrow(w) > 0, all(c("Start", "End") %in% names(w)))
 bin = g$bin_end[1] - g$bin_start[1]
 w[, seg := rleid(Chromosome, MedianRatio)][, bin_start := ((Start - 1 + End) %/% 2) %/% bin * bin]

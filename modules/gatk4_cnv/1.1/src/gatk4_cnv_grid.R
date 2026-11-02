@@ -7,16 +7,16 @@ suppressPackageStartupMessages(library(data.table))
 a = commandArgs(trailingOnly = TRUE)
 stopifnot(length(a) == 4)
 contigs = strsplit(a[3], ",", fixed = TRUE)[[1]]
-bin = as.numeric(a[4])
+bin = as.integer(a[4])
 
 hdr = grep("^@SQ", readLines(a[1]), value = TRUE)
-len = data.table(Chromosome = sub(".*\tSN:([^\t]+).*", "\\1", hdr), len = as.numeric(sub(".*\tLN:([0-9]+).*", "\\1", hdr)))[Chromosome %in% contigs]
+len = data.table(Chromosome = sub(".*\tSN:([^\t]+).*", "\\1", hdr), len = as.integer(sub(".*\tLN:([0-9]+).*", "\\1", hdr)))[Chromosome %in% contigs]
 stopifnot(setequal(len$Chromosome, contigs))
 t = fread(cmd = paste("grep -v '^@'", shQuote(a[1])), header = FALSE, select = 1:3, col.names = c("Chromosome", "start", "end"),
           colClasses = list(character = 1L))[Chromosome %in% contigs]
 stopifnot(nrow(t) > 0)
 t[, bin_start := ((start - 1 + end) %/% 2) %/% bin * bin]
-g = len[, .(bin_start = seq(0, len - 1, by = bin)), by = .(Chromosome, len)][, bin_end := pmin(bin_start + bin, len)][, len := NULL]
+g = len[, .(bin_start = seq(0L, len - 1L, by = bin)), by = .(Chromosome, len)][, bin_end := pmin(bin_start + bin, len)][, len := NULL]
 g = merge(g, t[, .(n_targets = .N), by = .(Chromosome, bin_start)], by = c("Chromosome", "bin_start"), all.x = TRUE)
 g[is.na(n_targets), n_targets := 0L]
 g = g[order(match(Chromosome, contigs), bin_start), .(Chromosome, bin_start, bin_end, n_targets)]
