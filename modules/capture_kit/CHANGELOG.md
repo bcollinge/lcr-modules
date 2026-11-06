@@ -24,4 +24,6 @@ This release was authored by Brett Collinge.
 - Default thresholds were set on a known-answer set of Agilent V5, V5+UTR, V6+UTR, V7,
   IDT xGen v1 and v2 exomes, kit-mixed merges and genomes.
 - Kits whose target files are identical cannot be separated by coverage.
+- The call file reports own, against and margin of the called kit (of the best kit by
+  margin when the label is not a single kit), in a column named `kit`.
 - Cost is one single-threaded `samtools bedcov` per sample, dominated by reading the file.

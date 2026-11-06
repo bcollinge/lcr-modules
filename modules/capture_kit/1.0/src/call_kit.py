@@ -14,7 +14,8 @@ Label, in order: too_shallow (core depth below min_core_depth), genome_like
 (floor/core >= genome_floor), the kit when exactly one passes, mixed when several pass,
 or when none passes but the best kit A has own_A >= hi and the kit B that sets
 against_A has ratio(B--not--A) >= lo (call "A+B"); otherwise none_known.
-The call's margin is that of the best kit by margin.
+The call file reports own, against and margin of the called kit, or of the best kit by
+margin when the label is not a single kit.
 
 Writes <out_prefix>.capture_kit.tsv (one row per set) and
 <out_prefix>.capture_kit.call.tsv (one row).
@@ -82,6 +83,7 @@ def main():
         label, call = "mixed", best[0] + "+" + best[4]
     else:
         label, call = "none_known", ""
+    rep = next(r for r in rows if r[0] == call) if label == "kit" else best
 
     with open(a.out_prefix + ".capture_kit.tsv", "w") as f:
         f.write("sample_id\tset\tbp\tdepth\tratio_to_core\n")
@@ -92,9 +94,9 @@ def main():
             f.write(f"{a.sample_id}\tagainst:{k}\t\t\t{g:.4f}\n")
 
     with open(a.out_prefix + ".capture_kit.call.tsv", "w") as f:
-        f.write("sample_id\tlabel\tcall\tbest_kit\town\tagainst\tmargin\tcore_depth\tfloor_to_core\n")
-        f.write(f"{a.sample_id}\t{label}\t{call}\t{best[0]}\t{best[1]:.4f}\t{best[2]:.4f}"
-                f"\t{best[3]:.4f}\t{core:.2f}\t{floor_core:.4f}\n")
+        f.write("sample_id\tlabel\tcall\tkit\town\tagainst\tmargin\tcore_depth\tfloor_to_core\n")
+        f.write(f"{a.sample_id}\t{label}\t{call}\t{rep[0]}\t{rep[1]:.4f}\t{rep[2]:.4f}"
+                f"\t{rep[3]:.4f}\t{core:.2f}\t{floor_core:.4f}\n")
 
 
 if __name__ == "__main__":
