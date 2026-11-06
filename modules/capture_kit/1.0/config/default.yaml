@@ -16,7 +16,7 @@ lcr-modules:
         #   agilent_v7:
         #       grch37: "/path/to/S31285117_Covered.bb"
         #       hg38: "/path/to/S31285117_Covered.bb"
-        kits: "__UPDATE__"
+        kits: {}
 
         panel:
             # Directory with UCSC tables: genomicSuperDups.<db>.txt.gz, gap.<db>.txt.gz,
