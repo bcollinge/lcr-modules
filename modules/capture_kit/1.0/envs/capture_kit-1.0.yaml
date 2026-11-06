@@ -1,0 +1,9 @@
+name: capture_kit-1.0
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - samtools=1.19
+  - bedtools=2.31.1
+  - ucsc-bigbedtobed
+  - python=3.11

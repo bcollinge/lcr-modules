@@ -1,0 +1,66 @@
+lcr-modules:
+
+    capture_kit:
+
+        inputs:
+            # Available wildcards: {seq_type} {genome_build} {sample_id}
+            sample_bam: "__UPDATE__"
+            sample_bai: "__UPDATE__"
+            build_panel: "{MODSDIR}/src/build_panel.sh"
+            fingerprint: "{MODSDIR}/src/fingerprint.sh"
+            call_kit: "{MODSDIR}/src/call_kit.py"
+
+        # Kit design files per build, local paths (.bb or BED; Covered/probe files preferred).
+        # Builds are keyed grch37 or hg38; a genome_build containing "38" uses hg38.
+        # Example:
+        #   agilent_v7:
+        #       grch37: "/path/to/S31285117_Covered.bb"
+        #       hg38: "/path/to/S31285117_Covered.bb"
+        kits: "__UPDATE__"
+
+        panel:
+            # Directory with UCSC tables: genomicSuperDups.<db>.txt.gz, gap.<db>.txt.gz,
+            # <db>.chrom.sizes and, for hg38, centromeres.hg38.txt.gz (db = hg19 or hg38)
+            annotation_dir: "__UPDATE__"
+            gap: 1000
+            min_region: 100
+            panel_size: 2000
+            floor_slop: 5000
+            floor_window: 10000
+
+        call:
+            hi: 0.35
+            lo: 0.2
+            min_margin: 0.3
+            min_core_depth: 3
+            min_set_bp: 20000
+            genome_floor: 0.5
+
+        scratch_subdirectories: []
+
+        conda_envs:
+            capture_kit: "{MODSDIR}/envs/capture_kit-1.0.yaml"
+
+        threads:
+            panel: 1
+            bedcov: 1
+            call: 1
+
+        resources:
+            panel:
+                mem_mb: 4000
+            bedcov:
+                mem_mb: 2000
+                bam: 1
+            call:
+                mem_mb: 1000
+
+        pairing_config:
+            genome:
+                run_paired_tumours: False
+                run_unpaired_tumours_with: "no_normal"
+                run_paired_tumours_as_unpaired: True
+            capture:
+                run_paired_tumours: False
+                run_unpaired_tumours_with: "no_normal"
+                run_paired_tumours_as_unpaired: True
