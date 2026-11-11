@@ -61,6 +61,10 @@ lcr-modules:
             tinc_seed: 2024
             # Passed to TINC::autofit.
             tinc_fast: False
+            # inputs.tinc_vcf is a Strelka 2 call read by TINC's own parser (strelka), or a matched Mutect2 call
+            # (mutect2_normal_kept): records PASS or filtered only as germline and/or normal_artifact, biallelic SNVs,
+            # counts from AD.
+            tinc_vcf_format: "strelka"
             # A pair is called contaminated by TINC when `estimate` exceeds `above` and the tumour fraction (TIT) is
             # at least `purity_at_least`; below that purity it is not_assessable.
             tinc_call:

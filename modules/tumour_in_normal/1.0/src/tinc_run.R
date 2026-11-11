@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# TINC on one pair: Strelka 2 PASS SNVs through TINC::load_VCF_Strelka, Battenberg copy number in CNAqc columns
+# TINC on one pair: Strelka 2 PASS SNVs through TINC::load_VCF_Strelka, or a Mutect2 site table (mutect2_sites), Battenberg copy number in CNAqc columns
 # when given, then TINC::autofit with its defaults. A pair with a missing input or that TINC cannot fit gets a
 # not_assessable row carrying the reason.
 suppressPackageStartupMessages({
@@ -17,6 +17,33 @@ cna_file <- snakemake@params[["cna"]]
 cna_mode <- snakemake@wildcards[["cna_mode"]]
 filler <- snakemake@params[["filler"]]
 seed <- as.integer(snakemake@params[["seed"]])
+vcf_format <- snakemake@params[["vcf_format"]]
+
+# Matched Mutect2 call to TINC's input table: chr1-chr22, records PASS or filtered only as germline and/or
+# normal_artifact, biallelic SNVs, ref and alt counts from AD, tumour VAF strictly between 0 and 1 (as TINC's parser).
+mutect2_sites <- function(lines) {
+  hdr <- lines[startsWith(lines, "#")]
+  meta <- function(key) sub(paste0("^##", key, "="), "", grep(paste0("^##", key, "="), hdr, value = TRUE))
+  samples <- strsplit(tail(hdr, 1), "\t")[[1]][-(1:9)]
+  t_col <- 9 + match(meta("tumor_sample"), samples)
+  n_col <- 9 + match(meta("normal_sample"), samples)
+  f <- do.call(rbind, strsplit(lines[!startsWith(lines, "#")], "\t"))
+  chr <- ifelse(startsWith(f[, 1], "chr"), f[, 1], paste0("chr", f[, 1]))
+  filters <- strsplit(f[, 7], ";")
+  keep <- chr %in% paste0("chr", 1:22) & nchar(f[, 4]) == 1 & nchar(f[, 5]) == 1 &
+    vapply(filters, function(x) all(x == "PASS") || all(x %in% c("germline", "normal_artifact")), logical(1))
+  ad <- function(col) {
+    i <- vapply(strsplit(f[keep, 9], ":"), function(x) match("AD", x), integer(1))
+    v <- mapply(function(s, j) strsplit(s, ":")[[1]][j], f[keep, col], i)
+    do.call(rbind, lapply(strsplit(v, ","), as.numeric))
+  }
+  n <- ad(n_col)
+  t <- ad(t_col)
+  pos <- as.numeric(f[keep, 2])
+  tibble::tibble(chr = chr[keep], from = pos - 1, to = pos, ref = f[keep, 4], alt = f[keep, 5],
+                 n_ref_count = n[, 1], n_alt_count = n[, 2], t_ref_count = t[, 1], t_alt_count = t[, 2]) %>%
+    dplyr::filter(t_alt_count / (t_ref_count + t_alt_count) > 0, t_alt_count / (t_ref_count + t_alt_count) < 1)
+}
 
 # Battenberg subclones.txt to CNAqc segments. clonal: segments whose first state has fraction 1. majority: the
 # state with the larger fraction. state1: the first state whatever its fraction. Rows with no state called
@@ -51,14 +78,16 @@ if (any(missing_input)) {
 } else {
   # load_VCF_Strelka keeps chr1-chr22 only; unprefixed contigs are prefixed so the same autosomes are read.
   lines <- readLines(gzfile(vcf))
-  body <- lines[!startsWith(lines, "#")]
-  body <- sub("^([0-9]+)\t", "chr\\1\t", body)
-  tmp <- tempfile(fileext = ".vcf")
-  writeLines(body, tmp)
+  if (vcf_format == "strelka") {
+    body <- lines[!startsWith(lines, "#")]
+    body <- sub("^([0-9]+)\t", "chr\\1\t", body)
+    tmp <- tempfile(fileext = ".vcf")
+    writeLines(body, tmp)
+  }
   cna <- if (cna_mode == "none") NULL else battenberg_segments(cna_file, cna_mode, filler)
   set.seed(seed)
   fit <- tryCatch({
-    mutations <- TINC::load_VCF_Strelka(tmp)
+    mutations <- if (vcf_format == "strelka") TINC::load_VCF_Strelka(tmp) else mutect2_sites(lines)
     TINC::autofit(input = mutations, cna = cna, FAST = isTRUE(snakemake@params[["fast"]]))
   }, error = function(e) {
     row$status <<- "not_assessable"

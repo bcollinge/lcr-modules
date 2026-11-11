@@ -75,6 +75,7 @@ _TIN_CNA_MODES = list(_TIN_OPTS["tinc_cna_modes"] or []) if _tin_given("tinc_cna
 if _tin_given("tinc_vcf"):
     assert _TIN_CNA_MODES, "options.tinc_cna_modes must be set when inputs.tinc_cna is given"
     assert "none" not in _TIN_CNA_MODES or not _tin_given("tinc_cna"), "tinc_cna_modes 'none' runs without tinc_cna"
+    assert _TIN_OPTS["tinc_vcf_format"] in ("strelka", "mutect2_normal_kept"), "options.tinc_vcf_format"
     if set(_TIN_CNA_MODES) - {"clonal", "none"}:
         assert _TIN_OPTS["tinc_cna_filler"] in ("drop", "as_written"), "options.tinc_cna_filler must be set"
 
@@ -258,7 +259,8 @@ def _tin_existing(key):
     return resolve
 
 
-# TINC as published: Strelka PASS SNVs through TINC's own parser, Battenberg copy number per cna_mode.
+# TINC: Strelka PASS SNVs through TINC's own parser (as published), or a Mutect2 site table not filtered on the
+# normal; Battenberg copy number per cna_mode.
 rule _tumour_in_normal_tinc:
     input:
         vcf = lambda w: _tin_existing("tinc_vcf")(w) or [],
@@ -274,7 +276,8 @@ rule _tumour_in_normal_tinc:
         cna = _tin_existing("tinc_cna"),
         filler = _TIN_OPTS["tinc_cna_filler"] or "",
         seed = _TIN_OPTS["tinc_seed"],
-        fast = bool(_TIN_OPTS["tinc_fast"])
+        fast = bool(_TIN_OPTS["tinc_fast"]),
+        vcf_format = _TIN_OPTS["tinc_vcf_format"]
     conda:
         CFG["conda_envs"]["tinc"]
     threads:
