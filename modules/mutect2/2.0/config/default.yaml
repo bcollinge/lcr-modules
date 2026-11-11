@@ -27,6 +27,12 @@ lcr-modules:
                 # For example, to remove all variants with -log10(POPAF) > 4.0: 
                 #"-f '.,PASS' -i 'INFO/POPAF > 4'"
 
+        switches:
+            # gnomAD germline resource per genome_build (one record per position, ALTs joined)
+            gnomad:
+                _default: "genomes/{genome_build}/variation/gnomad.genomes_exomes.r2.1.1.anw.af.joined.{genome_build}.vcf.gz"
+                hg38: "genomes/{genome_build}/variation/gnomad.joint.v4.1.af.joined.{genome_build}.vcf.gz"
+                hg38-nci: "genomes/{genome_build}/variation/gnomad.joint.v4.1.af.joined.{genome_build}.vcf.gz"
 
         conda_envs:
             samtools: "{MODSDIR}/envs/samtools-1.9.yaml"
