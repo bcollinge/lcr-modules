@@ -19,13 +19,13 @@ messages = [
     "Only using aSCNA data",
 ]
 
-columns = ["tumour_id", "normal_id", "seq_type", "genome_build", "arm", "TiN", "TiN_CI_low", "TiN_CI_high",
+columns = ["tumour_id", "normal_id", "seq_type", "genome_build", "params", "arm", "TiN", "TiN_CI_low", "TiN_CI_high",
            "n_SSNVs_added"] + list(patterns) + ["messages"]
 w = snakemake.wildcards
 with open(snakemake.output.tsv, "w") as out:
     out.write("\t".join(columns) + "\n")
-    for arm, tin, ci, added, stdout in zip(snakemake.params.arms, snakemake.input.tin, snakemake.input.ci,
-                                           snakemake.input.added, snakemake.input.stdout):
+    for (pset, arm), tin, ci, added, stdout in zip(snakemake.params.runs, snakemake.input.tin, snakemake.input.ci,
+                                                   snakemake.input.added, snakemake.input.stdout):
         low, high = [x.strip() for x in open(ci).read().split(" - ")]
         log = open(stdout).read()
         found = []
@@ -33,5 +33,5 @@ with open(snakemake.output.tsv, "w") as out:
             hits = re.findall(pattern, log)
             found.append(hits[-1] if hits else "NA")
         fired = [m for m in messages if m in log]
-        out.write("\t".join([w.tumour_id, w.normal_id, w.seq_type, w.genome_build, arm, open(tin).read().strip(),
+        out.write("\t".join([w.tumour_id, w.normal_id, w.seq_type, w.genome_build, pset, arm, open(tin).read().strip(),
                              low, high, open(added).read().strip()] + found + ["; ".join(fired) or "NA"]) + "\n")

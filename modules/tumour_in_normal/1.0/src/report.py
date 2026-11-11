@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # pairs.tsv: one row per pair, tool and variant (deTiN arm, TINC copy-number mode), with a call.
-# normals.tsv: one row per normal and tool, from the tool's primary variant (deTiN joint if run, else ssnv; TINC's
-# first copy-number mode). A normal serving several tumours takes the most severe call among its pairs, in the
+# normals.tsv: one row per normal and tool, from the tool's primary variant (deTiN's first settings set, joint if run,
+# else ssnv; TINC's first copy-number mode). A normal serving several tumours takes the most severe call among its pairs, in the
 # order contaminated, low_level, clean, not_assessable; the estimate, interval and site count are those of the pair
 # that gave the call, the highest estimate on a tie.
 import pandas as pd
@@ -31,7 +31,7 @@ def detin_rows(path):
             call = "low_level"
         else:
             call = "clean"
-        rows.append([r.normal_id, r.tumour_id, r.seq_type, r.genome_build, "detin", r.arm, call, tin, low, high,
+        rows.append([r.normal_id, r.tumour_id, r.seq_type, r.genome_build, "detin", r.params + ":" + r.arm, call, tin, low, high,
                      num(r.ssnv_sites), r.messages])
     return rows
 
@@ -67,7 +67,7 @@ pairs.to_csv(snakemake.output.pairs, sep="\t", index=False)
 primary = []
 for (tool, normal, seq_type, build), g in pairs.groupby(["tool", "normal_id", "seq_type", "genome_build"]):
     if tool == "detin":
-        order = ["joint", "ssnv", "NA"]
+        order = [f"{opts['detin_psets'][0]}:{arm}" for arm in ("joint", "ssnv")] + ["NA"]
     else:
         order = list(opts["tinc_cna_modes"]) + ["NA"]
     g = g[g.variant == next(v for v in order if v in set(g.variant))]

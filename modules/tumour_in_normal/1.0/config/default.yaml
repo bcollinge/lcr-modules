@@ -37,11 +37,10 @@ lcr-modules:
             # Mutect2 filters that, alone or together, make a record a deTiN candidate (written as
             # alt_allele_in_normal). PASS records are always candidates.
             detin_candidate_filters: ["germline", "normal_artifact"]
-            # deTiN model settings, passed as --<key> <value>. Required; no default is assumed.
-            detin_params:
-                TiN_prior: null
-                mutation_prior: null
-                SSNV_af_threshold: null
+            # Named sets of deTiN model settings, each passed as --<key> <value>; deTiN runs once per set and the
+            # first set is the one reported per normal. Required; no default is assumed. Each set needs TiN_prior,
+            # mutation_prior and SSNV_af_threshold, e.g. {primary: {TiN_prior: .., mutation_prior: .., SSNV_af_threshold: ..}}.
+            detin_params: {}
             # Extra deTiN arguments per seq_type.
             detin_seq_type:
                 capture: ""

@@ -41,6 +41,7 @@ wildcard_constraints:
     normal_id = "[^/]+",
     pair_status = "[^/]+",
     arm = "ssnv|joint|ascna",
+    pset = "[^/]+",
     cna_mode = "none|clonal|majority|state1"
 
 
@@ -65,9 +66,12 @@ _TIN_SNV = _tin_given("detin_mutect2_vcf")
 _TIN_CN = all(_tin_given(k) for k in ("detin_seg", "detin_tumour_hets", "detin_normal_hets"))
 _TIN_ARMS = (["joint", "ascna"] if _TIN_CN else ["ssnv"]) if _TIN_SNV else []
 
+_TIN_PSETS = list(_TIN_OPTS["detin_params"] or {})
 if _TIN_ARMS:
-    for _key in ("TiN_prior", "mutation_prior", "SSNV_af_threshold"):
-        assert _TIN_OPTS["detin_params"].get(_key) is not None, f"options.detin_params.{_key} must be set"
+    assert _TIN_PSETS, "options.detin_params must name at least one set of deTiN settings"
+    for _pset, _vals in _TIN_OPTS["detin_params"].items():
+        for _key in ("TiN_prior", "mutation_prior", "SSNV_af_threshold"):
+            assert (_vals or {}).get(_key) is not None, f"options.detin_params.{_pset}.{_key} must be set"
     assert _TIN_OPTS["detin_call"].get("ci_low_above") is not None, "options.detin_call.ci_low_above must be set"
     assert _tin_given("detin_population_vcf"), "inputs.detin_population_vcf must be set with detin_mutect2_vcf"
 
@@ -200,7 +204,7 @@ def _tin_detin_args(wildcards, input):
                  "--normal_het_data_path", input.normal_hets]
     if wildcards.arm == "ascna":
         args.append("--only_ascnas")
-    args += [f"--{key} {value}" for key, value in _TIN_OPTS["detin_params"].items()]
+    args += [f"--{key} {value}" for key, value in _TIN_OPTS["detin_params"][wildcards.pset].items()]
     return " ".join(args)
 
 
@@ -209,16 +213,16 @@ rule _tumour_in_normal_detin:
     input:
         unpack(_tin_detin_inputs)
     output:
-        tin = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}/{tumour_id}--{normal_id}.TiN_estimate.txt",
-        ci = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}/{tumour_id}--{normal_id}.TiN_estimate_CI.txt",
-        added = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}/{tumour_id}--{normal_id}.number_of_SSNVs_added.txt",
-        stdout = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}/deTiN.stdout.txt"
+        tin = CFG["dirs"]["detin"] + _TIN_PAIR + "/{pset}/{arm}/{tumour_id}--{normal_id}.TiN_estimate.txt",
+        ci = CFG["dirs"]["detin"] + _TIN_PAIR + "/{pset}/{arm}/{tumour_id}--{normal_id}.TiN_estimate_CI.txt",
+        added = CFG["dirs"]["detin"] + _TIN_PAIR + "/{pset}/{arm}/{tumour_id}--{normal_id}.number_of_SSNVs_added.txt",
+        stdout = CFG["dirs"]["detin"] + _TIN_PAIR + "/{pset}/{arm}/deTiN.stdout.txt"
     log:
-        stderr = CFG["logs"]["detin"] + _TIN_PAIR + "/{arm}.stderr.log"
+        stderr = CFG["logs"]["detin"] + _TIN_PAIR + "/{pset}/{arm}.stderr.log"
     params:
         args = _tin_detin_args,
         opts_seq_type = lambda w: _TIN_OPTS["detin_seq_type"].get(w.seq_type, ""),
-        outdir = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}"
+        outdir = CFG["dirs"]["detin"] + _TIN_PAIR + "/{pset}/{arm}"
     conda:
         CFG["conda_envs"]["detin"]
     threads:
@@ -236,14 +240,14 @@ rule _tumour_in_normal_detin:
 
 rule _tumour_in_normal_detin_summary:
     input:
-        tin = expand(str(rules._tumour_in_normal_detin.output.tin), arm = _TIN_ARMS, allow_missing = True),
-        ci = expand(str(rules._tumour_in_normal_detin.output.ci), arm = _TIN_ARMS, allow_missing = True),
-        added = expand(str(rules._tumour_in_normal_detin.output.added), arm = _TIN_ARMS, allow_missing = True),
-        stdout = expand(str(rules._tumour_in_normal_detin.output.stdout), arm = _TIN_ARMS, allow_missing = True)
+        tin = expand(str(rules._tumour_in_normal_detin.output.tin), pset = _TIN_PSETS, arm = _TIN_ARMS, allow_missing = True),
+        ci = expand(str(rules._tumour_in_normal_detin.output.ci), pset = _TIN_PSETS, arm = _TIN_ARMS, allow_missing = True),
+        added = expand(str(rules._tumour_in_normal_detin.output.added), pset = _TIN_PSETS, arm = _TIN_ARMS, allow_missing = True),
+        stdout = expand(str(rules._tumour_in_normal_detin.output.stdout), pset = _TIN_PSETS, arm = _TIN_ARMS, allow_missing = True)
     output:
         tsv = CFG["dirs"]["detin"] + _TIN_PAIR + "/detin.tsv"
     params:
-        arms = _TIN_ARMS
+        runs = [(p, a) for p in _TIN_PSETS for a in _TIN_ARMS]
     script:
         "src/detin_summary.py"
 
@@ -317,7 +321,7 @@ rule _tumour_in_normal_report:
         pairs = CFG["dirs"]["outputs"] + "report/pairs.tsv",
         normals = CFG["dirs"]["outputs"] + "report/normals.tsv"
     params:
-        opts = dict(_TIN_OPTS, tinc_cna_modes = _TIN_CNA_MODES),
+        opts = dict(_TIN_OPTS, tinc_cna_modes = _TIN_CNA_MODES, detin_psets = _TIN_PSETS),
         not_run = _TIN_DETIN_NOT_RUN
     conda:
         CFG["conda_envs"]["detin"]
