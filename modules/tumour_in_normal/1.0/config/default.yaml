@@ -2,22 +2,23 @@ lcr-modules:
 
     tumour_in_normal:
 
-        # Every input is optional (""). Wildcards available to all of them:
-        # {seq_type} {genome_build} {tumour_id} {normal_id} {pair_status}
+        # Every input is optional (""). A path pattern may use {seq_type} {genome_build} {tumour_id} {normal_id}
+        # {pair_status}; a function of the wildcards is also accepted.
         inputs:
-            # deTiN SNV arm: a MuTect call-stats table (contig, position, ref_allele, alt_allele, tumor_name,
-            # normal_name, t_alt_count, t_ref_count, n_alt_count, n_ref_count, failure_reasons, judgement).
-            detin_callstats: ""
-            # Population VCF ({genome_build} only); sites with summed AF >= options.population_min_af are treated
-            # as germline. Required when detin_callstats is given.
+            # deTiN SNVs: the matched pair's FilterMutectCalls VCF from Mutect2 run with --genotype-germline-sites,
+            # converted to deTiN's call-stats table by src/mutect2_to_callstats.py.
+            detin_mutect2_vcf: ""
+            # Population VCF with INFO/AF; sites with summed AF >= options.population_min_af are treated as germline.
+            # Required with detin_mutect2_vcf.
             detin_population_vcf: ""
-            # deTiN copy-number arm: allelic segments of the tumour (deTiN columns, or GATK ModelSegments
-            # modelFinal.seg) and het-site counts for tumour and normal (CONTIG, POSITION, REF_COUNT, ALT_COUNT).
-            # Lines starting with "@" are removed before deTiN reads them.
+            # deTiN copy number: allelic segments of the tumour (deTiN columns, or GATK ModelSegments modelFinal.seg)
+            # and het-site counts for tumour and normal (CONTIG, POSITION, REF_COUNT, ALT_COUNT). Lines starting
+            # with "@" are removed before deTiN reads them.
             detin_seg: ""
             detin_tumour_hets: ""
             detin_normal_hets: ""
-            # TINC: a Strelka 2 somatic SNV VCF (NORMAL and TUMOR columns, tier counts AU/CU/GU/TU).
+            # TINC: a Strelka 2 somatic SNV VCF (NORMAL and TUMOR columns, tier counts AU/CU/GU/TU). A pair whose
+            # file does not exist gets a not_assessable row.
             tinc_vcf: ""
             # TINC copy number: a Battenberg subclones.txt; "" runs TINC without copy number.
             tinc_cna: ""
@@ -31,17 +32,44 @@ lcr-modules:
             # deTiN source, run from its own directory (the package's console script does not import under Python 3).
             detin_url: "https://github.com/getzlab/deTiN/archive/d296e11d6575f6d0fb7912a51fc7ecbbb4df0b10.tar.gz"
             detin_dir: "deTiN-d296e11d6575f6d0fb7912a51fc7ecbbb4df0b10"
-            # Extra deTiN arguments, all seq_types, then per seq_type.
-            detin: ""
+            # deTiN maps positions to hg19 linear coordinates; other builds get a not_assessable row.
+            detin_builds: ["grch37", "hs37d5"]
+            # Mutect2 filters that, alone or together, make a record a deTiN candidate (written as
+            # alt_allele_in_normal). PASS records are always candidates.
+            detin_candidate_filters: ["germline", "normal_artifact"]
+            # deTiN model settings, passed as --<key> <value>. Required; no default is assumed.
+            detin_params:
+                TiN_prior: null
+                mutation_prior: null
+                SSNV_af_threshold: null
+            # Extra deTiN arguments per seq_type.
             detin_seq_type:
                 capture: ""
                 genome: "--ascna_probe_number_filter 0"
+            # A pair is called contaminated by deTiN when the lower end of its interval exceeds this. Required.
+            detin_call:
+                ci_low_above: null
             population_min_af: 0.01
+            # Battenberg state used as TINC's copy number, one run per entry: clonal (segments whose first state
+            # has fraction 1), majority (the state with the larger fraction), state1 (the first state as written).
+            # Required when inputs.tinc_cna is given; the first entry is the one reported per normal.
+            tinc_cna_modes: []
+            # Battenberg rows with no state called (fraction 0): drop, or as_written (1:1). Required for majority
+            # and state1.
+            tinc_cna_filler: null
+            # Seed set before TINC::autofit (MOBSTER initialisation and down-sampling are random).
+            tinc_seed: 2024
             # Passed to TINC::autofit.
             tinc_fast: False
+            # A pair is called contaminated by TINC when `estimate` exceeds `above` and the tumour fraction (TIT) is
+            # at least `purity_at_least`; below that purity it is not_assessable.
+            tinc_call:
+                estimate: "TIN_rf"
+                above: 0.01
+                purity_at_least: 0.25
 
         conda_envs:
-            detin: "{MODSDIR}/envs/detin-2.0.1.yaml"
+            detin: "{MODSDIR}/envs/detin-d296e11.yaml"
             tinc: "{MODSDIR}/envs/tinc-0.1.0.yaml"
             bcftools: "{MODSDIR}/envs/bcftools-1.10.2.yaml"
 

@@ -6,4 +6,4 @@ channels:
 dependencies:
   - r-base=4.4
   - r-tinc=0.1.0
-  - r-optparse
+  - r-tidyr

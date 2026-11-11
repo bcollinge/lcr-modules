@@ -11,20 +11,23 @@
 
 ##### SETUP #####
 
+import os
 import oncopipe as op
 
 # `CFG` is a shortcut to `config["lcr-modules"]["tumour_in_normal"]`
 CFG = op.setup_module(
     name = "tumour_in_normal",
     version = "1.0",
-    subdirectories = ["inputs", "population", "detin", "tinc", "outputs"],
+    subdirectories = ["inputs", "callstats", "population", "detin", "tinc", "outputs"],
 )
 
 localrules:
     _tumour_in_normal_detin_source,
     _tumour_in_normal_strip_headers,
+    _tumour_in_normal_callstats_positions,
     _tumour_in_normal_detin_summary,
     _tumour_in_normal_output,
+    _tumour_in_normal_report,
     _tumour_in_normal_all
 
 
@@ -37,30 +40,43 @@ wildcard_constraints:
     tumour_id = "[^/]+",
     normal_id = "[^/]+",
     pair_status = "[^/]+",
-    arm = "ssnv|ascna|joint"
+    arm = "ssnv|joint|ascna",
+    cna_mode = "none|clonal|majority|state1"
 
 
 _TIN_PAIR = "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}"
 _TIN_OPTS = CFG["options"]
 _TIN_INPUTS = CFG["inputs"]
+_TIN_RUNS = CFG["runs"]
 
 
 def _tin_given(key):
-    return CFG["inputs"].get(key, "") not in ("", None)
+    return _TIN_INPUTS.get(key) not in ("", None)
 
 
-def _tin_arms():
-    arms = []
-    if _tin_given("detin_callstats"):
-        arms.append("ssnv")
-    if all(_tin_given(k) for k in ("detin_seg", "detin_tumour_hets", "detin_normal_hets")):
-        arms.append("ascna")
-    if len(arms) == 2:
-        arms.append("joint")
-    return arms
+def _tin_path(key, wildcards):
+    value = _TIN_INPUTS[key]
+    return value(wildcards) if callable(value) else value.format(**wildcards)
 
 
-_TIN_ARMS = _tin_arms()
+# deTiN runs: SNVs only (ssnv), or with copy number both the joint estimate (joint) and its copy-number model
+# alone (ascna, deTiN's --only_ascnas). deTiN needs the SNV table in every run.
+_TIN_SNV = _tin_given("detin_mutect2_vcf")
+_TIN_CN = all(_tin_given(k) for k in ("detin_seg", "detin_tumour_hets", "detin_normal_hets"))
+_TIN_ARMS = (["joint", "ascna"] if _TIN_CN else ["ssnv"]) if _TIN_SNV else []
+
+if _TIN_ARMS:
+    for _key in ("TiN_prior", "mutation_prior", "SSNV_af_threshold"):
+        assert _TIN_OPTS["detin_params"].get(_key) is not None, f"options.detin_params.{_key} must be set"
+    assert _TIN_OPTS["detin_call"].get("ci_low_above") is not None, "options.detin_call.ci_low_above must be set"
+    assert _tin_given("detin_population_vcf"), "inputs.detin_population_vcf must be set with detin_mutect2_vcf"
+
+_TIN_CNA_MODES = list(_TIN_OPTS["tinc_cna_modes"] or []) if _tin_given("tinc_cna") else ["none"]
+if _tin_given("tinc_vcf"):
+    assert _TIN_CNA_MODES, "options.tinc_cna_modes must be set when inputs.tinc_cna is given"
+    assert "none" not in _TIN_CNA_MODES or not _tin_given("tinc_cna"), "tinc_cna_modes 'none' runs without tinc_cna"
+    if set(_TIN_CNA_MODES) - {"clonal", "none"}:
+        assert _TIN_OPTS["tinc_cna_filler"] in ("drop", "as_written"), "options.tinc_cna_filler must be set"
 
 
 # deTiN source at the configured commit; deTiN.py imports its siblings as top-level modules.
@@ -76,12 +92,30 @@ rule _tumour_in_normal_detin_source:
         "curl -fsSL {params.url} | tar -xz -C {params.dest}"
 
 
+# deTiN's call-stats table from the matched Mutect2 call (src/mutect2_to_callstats.py).
+rule _tumour_in_normal_callstats:
+    input:
+        vcf = _TIN_INPUTS["detin_mutect2_vcf"] or []
+    output:
+        callstats = CFG["dirs"]["callstats"] + _TIN_PAIR + "/callstats.tsv"
+    params:
+        candidate_filters = _TIN_OPTS["detin_candidate_filters"]
+    conda:
+        CFG["conda_envs"]["detin"]
+    threads:
+        CFG["threads"]["population"]
+    resources:
+        **CFG["resources"]["population"]
+    script:
+        "src/mutect2_to_callstats.py"
+
+
 # Copy-number inputs without the "@" header lines GATK writes; deTiN skips only "#" lines.
 rule _tumour_in_normal_strip_headers:
     input:
-        seg = CFG["inputs"]["detin_seg"] or [],
-        tumour_hets = CFG["inputs"]["detin_tumour_hets"] or [],
-        normal_hets = CFG["inputs"]["detin_normal_hets"] or []
+        seg = _TIN_INPUTS["detin_seg"] or [],
+        tumour_hets = _TIN_INPUTS["detin_tumour_hets"] or [],
+        normal_hets = _TIN_INPUTS["detin_normal_hets"] or []
     output:
         seg = CFG["dirs"]["inputs"] + "detin/" + _TIN_PAIR + "/seg.tsv",
         tumour_hets = CFG["dirs"]["inputs"] + "detin/" + _TIN_PAIR + "/tumour_hets.tsv",
@@ -94,13 +128,23 @@ rule _tumour_in_normal_strip_headers:
         """)
 
 
+rule _tumour_in_normal_callstats_positions:
+    input:
+        callstats = str(rules._tumour_in_normal_callstats.output.callstats)
+    output:
+        positions = temp(CFG["dirs"]["population"] + _TIN_PAIR + "/positions.tsv")
+    conda:
+        CFG["conda_envs"]["detin"]
+    script:
+        "src/callstats_positions.py"
+
+
 # Population records at the call-stats positions.
 rule _tumour_in_normal_population_sites:
     input:
-        callstats = CFG["inputs"]["detin_callstats"] or [],
-        vcf = CFG["inputs"]["detin_population_vcf"] or []
+        positions = str(rules._tumour_in_normal_callstats_positions.output.positions),
+        vcf = _TIN_INPUTS["detin_population_vcf"] or []
     output:
-        positions = temp(CFG["dirs"]["population"] + _TIN_PAIR + "/positions.tsv"),
         sites = CFG["dirs"]["population"] + _TIN_PAIR + "/sites.tsv"
     log:
         stderr = CFG["logs"]["population"] + _TIN_PAIR + "/population_sites.stderr.log"
@@ -112,11 +156,7 @@ rule _tumour_in_normal_population_sites:
         **CFG["resources"]["population"]
     shell:
         op.as_one_line("""
-        awk -F '\\t' 'NR == 1 {{ for (i = 1; i <= NF; i++) col[$i] = i; next }}
-            {{ print $col["contig"] "\\t" $col["position"] }}' {input.callstats}
-            | sort -k1,1 -k2,2n -u > {output.positions}
-        &&
-        bcftools query -T {output.positions} -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%INFO/AF\\n' {input.vcf}
+        bcftools query -T {input.positions} -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%INFO/AF\\n' {input.vcf}
             > {output.sites} 2> {log.stderr}
         """)
 
@@ -139,17 +179,13 @@ rule _tumour_in_normal_population_pickle:
         "src/population_pickle.py"
 
 
-def _tin_path(key, wildcards):
-    value = _TIN_INPUTS[key]
-    return value(wildcards) if callable(value) else value.format(**wildcards)
-
-
 def _tin_detin_inputs(wildcards):
-    inputs = {"script": str(rules._tumour_in_normal_detin_source.output.script)}
-    if wildcards.arm in ("ssnv", "joint"):
-        inputs["callstats"] = _tin_path("detin_callstats", wildcards)
-        inputs["pickle"] = str(rules._tumour_in_normal_population_pickle.output.pickle)
-    if wildcards.arm in ("ascna", "joint"):
+    inputs = {
+        "script": str(rules._tumour_in_normal_detin_source.output.script),
+        "callstats": str(rules._tumour_in_normal_callstats.output.callstats),
+        "pickle": str(rules._tumour_in_normal_population_pickle.output.pickle)
+    }
+    if wildcards.arm in ("joint", "ascna"):
         inputs["seg"] = str(rules._tumour_in_normal_strip_headers.output.seg)
         inputs["tumour_hets"] = str(rules._tumour_in_normal_strip_headers.output.tumour_hets)
         inputs["normal_hets"] = str(rules._tumour_in_normal_strip_headers.output.normal_hets)
@@ -157,30 +193,30 @@ def _tin_detin_inputs(wildcards):
 
 
 def _tin_detin_args(wildcards, input):
-    args = []
-    if "callstats" in input.keys():
-        args += ["--mutation_data_path", input.callstats, "--exac_data_path", input.pickle]
+    args = ["--mutation_data_path", input.callstats, "--exac_data_path", input.pickle]
     if "seg" in input.keys():
         args += ["--cn_data_path", input.seg,
                  "--tumor_het_data_path", input.tumour_hets,
                  "--normal_het_data_path", input.normal_hets]
+    if wildcards.arm == "ascna":
+        args.append("--only_ascnas")
+    args += [f"--{key} {value}" for key, value in _TIN_OPTS["detin_params"].items()]
     return " ".join(args)
 
 
-# deTiN as published, once per arm: SNVs only, copy number only, and both (its joint estimate).
+# deTiN as published. Its stdout is kept as an output: it holds each model's own estimate and site count.
 rule _tumour_in_normal_detin:
     input:
         unpack(_tin_detin_inputs)
     output:
         tin = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}/{tumour_id}--{normal_id}.TiN_estimate.txt",
         ci = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}/{tumour_id}--{normal_id}.TiN_estimate_CI.txt",
-        added = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}/{tumour_id}--{normal_id}.number_of_SSNVs_added.txt"
+        added = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}/{tumour_id}--{normal_id}.number_of_SSNVs_added.txt",
+        stdout = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}/deTiN.stdout.txt"
     log:
-        stdout = CFG["logs"]["detin"] + _TIN_PAIR + "/{arm}.stdout.log",
         stderr = CFG["logs"]["detin"] + _TIN_PAIR + "/{arm}.stderr.log"
     params:
         args = _tin_detin_args,
-        opts = _TIN_OPTS["detin"],
         opts_seq_type = lambda w: _TIN_OPTS["detin_seq_type"].get(w.seq_type, ""),
         outdir = CFG["dirs"]["detin"] + _TIN_PAIR + "/{arm}"
     conda:
@@ -193,41 +229,51 @@ rule _tumour_in_normal_detin:
         op.as_one_line("""
         MPLBACKEND=Agg python {input.script} {params.args}
             --output_name {wildcards.tumour_id}--{wildcards.normal_id} --output_dir {params.outdir}
-            {params.opts} {params.opts_seq_type}
-            > {log.stdout} 2> {log.stderr}
+            {params.opts_seq_type}
+            > {output.stdout} 2> {log.stderr}
         """)
 
 
-# One row per arm: the estimate, its interval and the SNVs deTiN would recover.
 rule _tumour_in_normal_detin_summary:
     input:
         tin = expand(str(rules._tumour_in_normal_detin.output.tin), arm = _TIN_ARMS, allow_missing = True),
         ci = expand(str(rules._tumour_in_normal_detin.output.ci), arm = _TIN_ARMS, allow_missing = True),
-        added = expand(str(rules._tumour_in_normal_detin.output.added), arm = _TIN_ARMS, allow_missing = True)
+        added = expand(str(rules._tumour_in_normal_detin.output.added), arm = _TIN_ARMS, allow_missing = True),
+        stdout = expand(str(rules._tumour_in_normal_detin.output.stdout), arm = _TIN_ARMS, allow_missing = True)
     output:
         tsv = CFG["dirs"]["detin"] + _TIN_PAIR + "/detin.tsv"
-    run:
-        with open(output.tsv, "w") as out:
-            out.write("tumour_id\tnormal_id\tseq_type\tgenome_build\tarm\tTiN\tTiN_CI_low\tTiN_CI_high\tn_SSNVs_added\n")
-            for arm, tin, ci, added in zip(_TIN_ARMS, input.tin, input.ci, input.added):
-                low, high = [x.strip() for x in open(ci).read().split(" - ")]
-                out.write("\t".join([wildcards.tumour_id, wildcards.normal_id, wildcards.seq_type,
-                                     wildcards.genome_build, arm, open(tin).read().strip(), low, high,
-                                     open(added).read().strip()]) + "\n")
+    params:
+        arms = _TIN_ARMS
+    script:
+        "src/detin_summary.py"
 
 
-# TINC as published: Strelka PASS SNVs through TINC's own parser, Battenberg copy number when given.
+def _tin_existing(key):
+    # An input given as a path pattern is used when the file exists; a callable is taken as produced upstream.
+    def resolve(wildcards):
+        if not _tin_given(key):
+            return ""
+        path = _tin_path(key, wildcards)
+        return path if callable(_TIN_INPUTS[key]) or os.path.exists(path) else ""
+    return resolve
+
+
+# TINC as published: Strelka PASS SNVs through TINC's own parser, Battenberg copy number per cna_mode.
 rule _tumour_in_normal_tinc:
     input:
-        vcf = CFG["inputs"]["tinc_vcf"] or [],
-        cna = CFG["inputs"]["tinc_cna"] or []
+        vcf = lambda w: _tin_existing("tinc_vcf")(w) or [],
+        cna = lambda w: (_tin_existing("tinc_cna")(w) or []) if w.cna_mode != "none" else []
     output:
-        tsv = CFG["dirs"]["tinc"] + _TIN_PAIR + "/tinc.tsv",
-        rds = CFG["dirs"]["tinc"] + _TIN_PAIR + "/tinc.rds",
-        pdf = CFG["dirs"]["tinc"] + _TIN_PAIR + "/tinc_report.pdf"
+        tsv = CFG["dirs"]["tinc"] + _TIN_PAIR + "/{cna_mode}/tinc.tsv",
+        rds = CFG["dirs"]["tinc"] + _TIN_PAIR + "/{cna_mode}/tinc.rds",
+        pdf = CFG["dirs"]["tinc"] + _TIN_PAIR + "/{cna_mode}/tinc_report.pdf"
     log:
-        stderr = CFG["logs"]["tinc"] + _TIN_PAIR + "/tinc.stderr.log"
+        stderr = CFG["logs"]["tinc"] + _TIN_PAIR + "/{cna_mode}.tinc.stderr.log"
     params:
+        vcf = _tin_existing("tinc_vcf"),
+        cna = _tin_existing("tinc_cna"),
+        filler = _TIN_OPTS["tinc_cna_filler"] or "",
+        seed = _TIN_OPTS["tinc_seed"],
         fast = bool(_TIN_OPTS["tinc_fast"])
     conda:
         CFG["conda_envs"]["tinc"]
@@ -239,46 +285,51 @@ rule _tumour_in_normal_tinc:
         "src/tinc_run.R"
 
 
-def _tin_output_source(wildcards):
-    if wildcards.tool == "detin":
-        return str(rules._tumour_in_normal_detin_summary.output.tsv)
-    return str(rules._tumour_in_normal_tinc.output.tsv)
-
-
 rule _tumour_in_normal_output:
     input:
-        tsv = _tin_output_source
+        tsv = str(rules._tumour_in_normal_detin_summary.output.tsv)
     output:
-        tsv = CFG["dirs"]["outputs"] + "{tool}/{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}.{tool}.tsv"
-    wildcard_constraints:
-        tool = "detin|tinc"
+        tsv = CFG["dirs"]["outputs"] + "detin/{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}.detin.tsv"
     run:
         op.relative_symlink(input.tsv, output.tsv, in_module = True)
 
 
-def _tin_targets():
-    runs = CFG["runs"]
-    targets = []
-    for tool in ("detin", "tinc"):
-        if tool == "detin" and not _TIN_ARMS:
-            continue
-        if tool == "tinc" and not _tin_given("tinc_vcf"):
-            continue
-        keep = runs["tumour_seq_type"].isin(CFG["tools"].get(tool, []))
-        sub = runs[keep]
-        targets += expand(str(rules._tumour_in_normal_output.output.tsv), zip,
-                          tool = [tool] * len(sub),
-                          seq_type = sub["tumour_seq_type"],
-                          genome_build = sub["tumour_genome_build"],
-                          tumour_id = sub["tumour_sample_id"],
-                          normal_id = sub["normal_sample_id"],
-                          pair_status = sub["pair_status"])
-    return targets
+def _tin_pairs(tool):
+    runs = _TIN_RUNS[_TIN_RUNS["tumour_seq_type"].isin(CFG["tools"].get(tool, []))]
+    return [dict(seq_type = r.tumour_seq_type, genome_build = r.tumour_genome_build, tumour_id = r.tumour_sample_id,
+                 normal_id = r.normal_sample_id, pair_status = r.pair_status) for r in runs.itertuples()]
+
+
+# deTiN's coordinates are hg19 linear positions; it runs only on the builds listed in options.detin_builds.
+_TIN_DETIN_RUN = [p for p in _tin_pairs("detin") if _TIN_ARMS and p["genome_build"] in _TIN_OPTS["detin_builds"]]
+_TIN_DETIN_NOT_RUN = [dict(p, tool = "detin", reason = "deTiN not run: " + (
+    "no SNV input" if not _TIN_ARMS else f"build {p['genome_build']} not in options.detin_builds"))
+    for p in _tin_pairs("detin") if p not in _TIN_DETIN_RUN]
+_TIN_TINC_RUN = _tin_pairs("tinc") if _tin_given("tinc_vcf") else []
+
+
+rule _tumour_in_normal_report:
+    input:
+        detin = [str(rules._tumour_in_normal_detin_summary.output.tsv).format(**p) for p in _TIN_DETIN_RUN],
+        tinc = [str(rules._tumour_in_normal_tinc.output.tsv).format(cna_mode = m, **p)
+                for p in _TIN_TINC_RUN for m in _TIN_CNA_MODES]
+    output:
+        pairs = CFG["dirs"]["outputs"] + "report/pairs.tsv",
+        normals = CFG["dirs"]["outputs"] + "report/normals.tsv"
+    params:
+        opts = dict(_TIN_OPTS, tinc_cna_modes = _TIN_CNA_MODES),
+        not_run = _TIN_DETIN_NOT_RUN
+    conda:
+        CFG["conda_envs"]["detin"]
+    script:
+        "src/report.py"
 
 
 rule _tumour_in_normal_all:
     input:
-        _tin_targets()
+        [str(rules._tumour_in_normal_output.output.tsv).format(**p) for p in _TIN_DETIN_RUN],
+        str(rules._tumour_in_normal_report.output.pairs),
+        str(rules._tumour_in_normal_report.output.normals)
 
 
 ##### CLEANUP #####
