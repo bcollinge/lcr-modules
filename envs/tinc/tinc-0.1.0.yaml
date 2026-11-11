@@ -1,0 +1,9 @@
+name: tinc-0.1.0
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - r-base=4.4
+  - r-tinc=0.1.0
+  - r-optparse

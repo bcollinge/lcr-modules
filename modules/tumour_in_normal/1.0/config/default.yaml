@@ -1,0 +1,69 @@
+lcr-modules:
+
+    tumour_in_normal:
+
+        # Every input is optional (""). Wildcards available to all of them:
+        # {seq_type} {genome_build} {tumour_id} {normal_id} {pair_status}
+        inputs:
+            # deTiN SNV arm: a MuTect call-stats table (contig, position, ref_allele, alt_allele, tumor_name,
+            # normal_name, t_alt_count, t_ref_count, n_alt_count, n_ref_count, failure_reasons, judgement).
+            detin_callstats: ""
+            # Population VCF ({genome_build} only); sites with summed AF >= options.population_min_af are treated
+            # as germline. Required when detin_callstats is given.
+            detin_population_vcf: ""
+            # deTiN copy-number arm: allelic segments of the tumour (deTiN columns, or GATK ModelSegments
+            # modelFinal.seg) and het-site counts for tumour and normal (CONTIG, POSITION, REF_COUNT, ALT_COUNT).
+            # Lines starting with "@" are removed before deTiN reads them.
+            detin_seg: ""
+            detin_tumour_hets: ""
+            detin_normal_hets: ""
+            # TINC: a Strelka 2 somatic SNV VCF (NORMAL and TUMOR columns, tier counts AU/CU/GU/TU).
+            tinc_vcf: ""
+            # TINC copy number: a Battenberg subclones.txt; "" runs TINC without copy number.
+            tinc_cna: ""
+
+        # Which tool runs on which seq_type.
+        tools:
+            detin: ["capture", "genome"]
+            tinc: ["genome"]
+
+        options:
+            # deTiN source, run from its own directory (the package's console script does not import under Python 3).
+            detin_url: "https://github.com/getzlab/deTiN/archive/d296e11d6575f6d0fb7912a51fc7ecbbb4df0b10.tar.gz"
+            detin_dir: "deTiN-d296e11d6575f6d0fb7912a51fc7ecbbb4df0b10"
+            # Extra deTiN arguments, all seq_types, then per seq_type.
+            detin: ""
+            detin_seq_type:
+                capture: ""
+                genome: "--ascna_probe_number_filter 0"
+            population_min_af: 0.01
+            # Passed to TINC::autofit.
+            tinc_fast: False
+
+        conda_envs:
+            detin: "{MODSDIR}/envs/detin-2.0.1.yaml"
+            tinc: "{MODSDIR}/envs/tinc-0.1.0.yaml"
+            bcftools: "{MODSDIR}/envs/bcftools-1.10.2.yaml"
+
+        threads:
+            detin: 1
+            population: 1
+            tinc: 1
+
+        resources:
+            detin:
+                mem_mb: 8000
+            population:
+                mem_mb: 2000
+            tinc:
+                mem_mb: 8000
+
+        pairing_config:
+            genome:
+                run_paired_tumours: True
+                run_unpaired_tumours_with: null
+                run_paired_tumours_as_unpaired: False
+            capture:
+                run_paired_tumours: True
+                run_unpaired_tumours_with: null
+                run_paired_tumours_as_unpaired: False
