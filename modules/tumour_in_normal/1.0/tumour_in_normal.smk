@@ -75,7 +75,7 @@ _TIN_CNA_MODES = list(_TIN_OPTS["tinc_cna_modes"] or []) if _tin_given("tinc_cna
 if _tin_given("tinc_vcf"):
     assert _TIN_CNA_MODES, "options.tinc_cna_modes must be set when inputs.tinc_cna is given"
     assert "none" not in _TIN_CNA_MODES or not _tin_given("tinc_cna"), "tinc_cna_modes 'none' runs without tinc_cna"
-    assert _TIN_OPTS["tinc_vcf_format"] in ("strelka", "mutect2_normal_kept"), "options.tinc_vcf_format"
+    assert _TIN_OPTS["tinc_vcf_format"] in ("strelka", "mutect2_normal_kept", "mutect2_normal_kept_nogermline"), "options.tinc_vcf_format"
     if set(_TIN_CNA_MODES) - {"clonal", "none"}:
         assert _TIN_OPTS["tinc_cna_filler"] in ("drop", "as_written"), "options.tinc_cna_filler must be set"
 

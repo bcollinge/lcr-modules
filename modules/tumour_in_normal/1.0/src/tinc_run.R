@@ -88,6 +88,12 @@ if (any(missing_input)) {
   set.seed(seed)
   fit <- tryCatch({
     mutations <- if (vcf_format == "strelka") TINC::load_VCF_Strelka(tmp) else mutect2_sites(lines)
+    if (vcf_format == "mutect2_normal_kept_nogermline") {
+      n_depth <- mutations$n_ref_count + mutations$n_alt_count
+      keep <- n_depth >= 10 & mutations$n_alt_count / n_depth < 0.35
+      message("germline exclusion: ", sum(!keep), " of ", nrow(mutations), " sites removed")
+      mutations <- mutations[keep, ]
+    }
     TINC::autofit(input = mutations, cna = cna, FAST = isTRUE(snakemake@params[["fast"]]))
   }, error = function(e) {
     row$status <<- "not_assessable"
