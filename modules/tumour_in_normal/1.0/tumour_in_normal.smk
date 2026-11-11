@@ -46,6 +46,8 @@ wildcard_constraints:
 
 
 _TIN_PAIR = "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}"
+# Scripts run in the deTiN environment take arguments: its pandas cannot read the snakemake object.
+_TIN_SRC = os.path.join(workflow.current_basedir, "src") + "/"
 _TIN_OPTS = CFG["options"]
 _TIN_INPUTS = CFG["inputs"]
 _TIN_RUNS = CFG["runs"]
@@ -104,8 +106,6 @@ rule _tumour_in_normal_callstats:
         callstats = CFG["dirs"]["callstats"] + _TIN_PAIR + "/callstats.tsv"
     params:
         candidate_filters = _TIN_OPTS["detin_candidate_filters"]
-    conda:
-        CFG["conda_envs"]["detin"]
     threads:
         CFG["threads"]["population"]
     resources:
@@ -137,10 +137,12 @@ rule _tumour_in_normal_callstats_positions:
         callstats = str(rules._tumour_in_normal_callstats.output.callstats)
     output:
         positions = temp(CFG["dirs"]["population"] + _TIN_PAIR + "/positions.tsv")
+    params:
+        script = _TIN_SRC + "callstats_positions.py"
     conda:
         CFG["conda_envs"]["detin"]
-    script:
-        "src/callstats_positions.py"
+    shell:
+        "python {params.script} {input.callstats} {output.positions}"
 
 
 # Population records at the call-stats positions.
@@ -172,15 +174,16 @@ rule _tumour_in_normal_population_pickle:
     output:
         pickle = CFG["dirs"]["population"] + _TIN_PAIR + "/population.pickle"
     params:
-        min_af = _TIN_OPTS["population_min_af"]
+        min_af = _TIN_OPTS["population_min_af"],
+        script = _TIN_SRC + "population_pickle.py"
     conda:
         CFG["conda_envs"]["detin"]
     threads:
         CFG["threads"]["population"]
     resources:
         **CFG["resources"]["population"]
-    script:
-        "src/population_pickle.py"
+    shell:
+        "python {params.script} {input.sites} {params.min_af} {output.pickle}"
 
 
 def _tin_detin_inputs(wildcards):
@@ -323,8 +326,6 @@ rule _tumour_in_normal_report:
     params:
         opts = dict(_TIN_OPTS, tinc_cna_modes = _TIN_CNA_MODES, detin_psets = _TIN_PSETS),
         not_run = _TIN_DETIN_NOT_RUN
-    conda:
-        CFG["conda_envs"]["detin"]
     script:
         "src/report.py"
 
