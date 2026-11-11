@@ -50,7 +50,7 @@ if (any(missing_input)) {
   row$reason <- paste("no input:", paste(names(missing_input)[missing_input], collapse = ", "))
 } else {
   # load_VCF_Strelka keeps chr1-chr22 only; unprefixed contigs are prefixed so the same autosomes are read.
-  lines <- readLines(gzcon(file(vcf, "rb")))
+  lines <- readLines(gzfile(vcf))
   body <- lines[!startsWith(lines, "#")]
   body <- sub("^([0-9]+)\t", "chr\\1\t", body)
   tmp <- tempfile(fileext = ".vcf")
