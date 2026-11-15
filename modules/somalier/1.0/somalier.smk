@@ -51,7 +51,8 @@ def _somalier_get_sites(wildcards):
 
 
 # Allele counts at the somalier sites. The digest's sample name is "{seq_type}--{genome_build}--{sample_id}:<read-group SM>";
-# a file carrying more than one read-group SM fails rather than yielding several digests.
+# a file carrying more than one read-group SM fails rather than yielding several digests. An SM of "N/A" is written
+# as <tmp>/N/A.somalier, hence the N subdirectory.
 rule _somalier_extract:
     input:
         bam = ancient(str(rules._somalier_input_bam.output.bam)),
@@ -75,7 +76,7 @@ rule _somalier_extract:
         **CFG["resources"]["extract"]
     shell:
         op.as_one_line("""
-        rm -rf {params.tmp} && mkdir -p {params.tmp} &&
+        rm -rf {params.tmp} && mkdir -p {params.tmp}/N &&
         somalier extract {params.opts} -d {params.tmp} --sites {input.sites} -f {input.fasta}
         --sample-prefix "{wildcards.seq_type}--{wildcards.genome_build}--{wildcards.sample_id}:" {input.bam} 2> {log.stderr} &&
         n=$(find {params.tmp} -name "*.somalier" | wc -l) &&
