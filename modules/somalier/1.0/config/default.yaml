@@ -1,0 +1,49 @@
+lcr-modules:
+
+    somalier:
+
+        inputs:
+            # Available wildcards: {seq_type} {genome_build} {sample_id}
+            sample_bam: "__UPDATE__"
+            sample_bai: "__UPDATE__"
+            # somalier sites VCF per genome_build (https://github.com/brentp/somalier/releases); the GRCh37, hs37d5 and
+            # hg38 site files list the same sites in the same order, so digests from different builds relate together
+            sites:
+                grch37: "__UPDATE__"
+                hg38: "__UPDATE__"
+
+        scratch_subdirectories: []
+
+        options:
+            extract: ""
+            relate: ""
+
+        conda_envs:
+            somalier: "{MODSDIR}/envs/somalier-0.2.15.yaml"
+
+        container_envs:
+            somalier: "docker://brentp/somalier:v0.2.15"
+
+        threads:
+            extract: 1
+            relate: 1
+
+        resources:
+            extract:
+                mem_mb: 2000
+            relate:
+                mem_mb: 8000
+
+        pairing_config:
+            genome:
+                run_paired_tumours: False
+                run_unpaired_tumours_with: "no_normal"
+                run_paired_tumours_as_unpaired: True
+            capture:
+                run_paired_tumours: False
+                run_unpaired_tumours_with: "no_normal"
+                run_paired_tumours_as_unpaired: True
+            mrna:
+                run_paired_tumours: False
+                run_unpaired_tumours_with: "no_normal"
+                run_paired_tumours_as_unpaired: True
