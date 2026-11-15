@@ -92,7 +92,6 @@ def _somalier_relate_inputs(wildcards):
 
 
 # Relatedness, IBS0/IBS2 and per-sample stats (including X heterozygous sites and Y depth) over every digest in the run.
-# A digest added to the run re-runs this step only.
 rule _somalier_relate:
     input:
         digests = _somalier_relate_inputs
@@ -130,8 +129,12 @@ rule _somalier_output_relate:
         op.relative_symlink(input.samples, output.samples, in_module= True)
 
 
+# Every digest is a target, so a sample added to the run is extracted and its newer digest re-runs relate
 rule _somalier_all:
     input:
+        expand(str(rules._somalier_extract.output.digest), zip,
+               seq_type=CFG["samples"]["seq_type"], genome_build=CFG["samples"]["genome_build"],
+               sample_id=CFG["samples"]["sample_id"]),
         str(rules._somalier_output_relate.output.pairs),
         str(rules._somalier_output_relate.output.samples)
 
