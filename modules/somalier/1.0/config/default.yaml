@@ -1,26 +1,38 @@
 lcr-modules:
-    
+
     somalier:
 
-        # TODO: Update the list of available wildcards, if applicable
         inputs:
             # Available wildcards: {seq_type} {genome_build} {sample_id}
             sample_bam: "__UPDATE__"
+            sample_bai: "__UPDATE__"
+            # somalier sites VCF per genome_build (https://github.com/brentp/somalier/releases); the GRCh37, hs37d5 and
+            # hg38 site files list the same sites in the same order, so digests from different builds relate together
+            sites:
+                grch37: "__UPDATE__"
+                hg38: "__UPDATE__"
 
         scratch_subdirectories: []
 
         options:
-            step_1: ""
-            step_2: ""
+            extract: ""
+            relate: ""
 
         conda_envs:
-            samtools: "{MODSDIR}/envs/samtools-1.9.yaml"
-            
-        threads:
-            step_1: 4
+            somalier: "{MODSDIR}/envs/somalier-0.2.15.yaml"
 
-        mem_mb:
-            step_1: 2000
+        container_envs:
+            somalier: "docker://brentp/somalier:v0.2.15"
+
+        threads:
+            extract: 1
+            relate: 1
+
+        resources:
+            extract:
+                mem_mb: 2000
+            relate:
+                mem_mb: 8000
 
         pairing_config:
             genome:
