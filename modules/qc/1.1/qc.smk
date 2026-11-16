@@ -575,6 +575,9 @@ rule _qc_output_contamination:
 
 
 _QC_COMPLEX = CFG["samples"][CFG["samples"]["seq_type"].isin(CFG["complexity_seq_types"])]
+# bound here because params functions run after cleanup_module removes CFG
+_QC_BIN_SIZE = str(CFG["complexity_bin_size"])
+_QC_PRESEQ_N = CFG["preseq_fixed_reads"]
 
 
 # Read length and paired share from the first 200,000 primary reads
@@ -621,7 +624,7 @@ rule _qc_mosdepth:
     params:
         prefix = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}",
         flag = lambda w: "1796" if w.dups == "dedup" else "772",
-        by = lambda w, input, size = str(CFG["complexity_bin_size"]): input.regions if w.seq_type == "capture" else size,
+        by = lambda w, input: input.regions if w.seq_type == "capture" else _QC_BIN_SIZE,
         opts = CFG["options"]["mosdepth"]
     conda:
         CFG["conda_envs"]["mosdepth"]
@@ -740,7 +743,7 @@ rule _qc_complexity_metrics:
     output:
         tsv = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.complexity.tsv"
     params:
-        fixed_reads = lambda w, n = CFG["preseq_fixed_reads"]: n[w.seq_type]
+        fixed_reads = lambda w: _QC_PRESEQ_N[w.seq_type]
     conda:
         CFG["conda_envs"]["gatkR"]
     container:
