@@ -88,6 +88,14 @@ CoverageMetrics = fread(cmd=command) %>%
   as.data.frame %>%
   `rownames<-`(snakemake@wildcards$sample_id)
 
+# library size, duplicate exclusion, evenness and GC dropout; NA where the Picard tool does not report one
+# (WgsMetrics has no library size or dropout) or reports "?"
+extra_fields = c(LibrarySize = "HS_LIBRARY_SIZE", ProportionExcludedDuplicates = "PCT_EXC_DUPE",
+                 Fold80BasePenalty = "FOLD_80_BASE_PENALTY", ATDropout = "AT_DROPOUT", GCDropout = "GC_DROPOUT")
+ExtraMetrics = as.data.frame(lapply(extra_fields, function(f)
+  if (f %in% names(CoverageMetrics)) suppressWarnings(as.numeric(CoverageMetrics[[f]])) else NA_real_))
+rownames(ExtraMetrics) = snakemake@wildcards$sample_id
+
 if (snakemake@wildcards$seq_type == "capture"){
   CoverageMetrics =
     CoverageMetrics %>%
@@ -132,7 +140,7 @@ colnames(CoverageMetrics) = c(
 
 print(colnames(CoverageMetrics))
 
-outputMetrics = cbind(SamtoolsMetrics, CoverageMetrics, QualityScore) %>%
+outputMetrics = cbind(SamtoolsMetrics, CoverageMetrics, ExtraMetrics, QualityScore) %>%
   relocate(AverageBaseQuality)
 
 outputMetrics$SeqType = snakemake@wildcards$seq_type

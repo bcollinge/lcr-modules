@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   within 0.2-5x the median; for non-capture samples a GC-stratified bin dispersion index, 1 = counting noise),
   CollectGcBiasMetrics on every seq_type, and preseq lc_extrap reported at a fixed read count per seq_type
   (`preseq_fixed_reads`). One row per sample under `99-outputs/complexity/`.
-- All 1.0 rules and outputs are unchanged.
+- The per-sample metrics table also carries LibrarySize (HS_LIBRARY_SIZE), ProportionExcludedDuplicates, Fold80BasePenalty,
+  ATDropout and GCDropout from the Picard metrics already collected (NA where the tool does not report one).
+- All other 1.0 rules and outputs are unchanged.
 
 ## [1.0] - 2022-05-18
 
