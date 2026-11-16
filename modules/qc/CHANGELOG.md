@@ -11,7 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   genome build and capture space) and CalculateContamination on the sample alone, for the seq_types in
   `contamination_seq_types`. Pileup and contamination tables are under `99-outputs/contamination/`, so a matched-normal
   CalculateContamination can be run downstream from the two pileups.
-- All 1.0 rules and outputs are unchanged.
+- Adds coverage evenness, GC bias and complexity per sample (`complexity_seq_types`): mosdepth with and without
+  duplicates (base-level CV and share of bases at >= 0.2x the mean; per-target or per-bin CV and share of regions
+  within 0.2-5x the median; for non-capture samples a GC-stratified bin dispersion index, 1 = counting noise),
+  CollectGcBiasMetrics on every seq_type, and preseq lc_extrap reported at a fixed read count per seq_type
+  (`preseq_fixed_reads`). One row per sample under `99-outputs/complexity/`.
+- The per-sample metrics table also carries LibrarySize (HS_LIBRARY_SIZE), ProportionExcludedDuplicates, Fold80BasePenalty,
+  ATDropout and GCDropout from the Picard metrics already collected (NA where the tool does not report one).
+- All other 1.0 rules and outputs are unchanged.
 
 ## [1.0] - 2022-05-18
 

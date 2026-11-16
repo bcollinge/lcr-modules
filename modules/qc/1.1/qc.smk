@@ -37,7 +37,7 @@ if version.parse(current_version) < version.parse(min_oncopipe_version):
 CFG = op.setup_module(
     name = "qc",
     version = "1.1",
-    subdirectories = ["inputs", "samtools", "gatk", "aggregated_metrics", "contamination", "outputs"],
+    subdirectories = ["inputs", "samtools", "gatk", "aggregated_metrics", "contamination", "complexity", "outputs"],
 )
 
 # Define rules to be run locally when using a compute cluster
@@ -47,6 +47,7 @@ localrules:
     _qc_download_baits,
     _qc_output_tsv,
     _qc_output_contamination,
+    _qc_output_complexity,
     _qc_all
 
 
@@ -573,6 +574,198 @@ rule _qc_output_contamination:
         op.relative_symlink(input.contamination, output.contamination, in_module= True)
 
 
+_QC_COMPLEX = CFG["samples"][CFG["samples"]["seq_type"].isin(CFG["complexity_seq_types"])]
+
+
+# Read length and paired share from the first 200,000 primary reads
+rule _qc_read_profile:
+    input:
+        bam = ancient(str(rules._qc_input_bam.output.bam)),
+        fasta = str(rules._qc_input_references.output.genome_fa)
+    output:
+        profile = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.read_profile.tsv"
+    conda:
+        CFG["conda_envs"]["samtools"]
+    container:
+        CFG["container_envs"]["samtools"]
+    shell:
+        op.as_one_line("""
+        (samtools view -T {input.fasta} -F 0x904 {input.bam} || true) | head -n 200000 |
+        awk 'BEGIN {{ OFS = "\\t"; print "reads", "mean_read_length", "paired_share" }}
+             {{ n++; l += length($10); if (and($2, 1)) p++ }} END {{ print n, (n ? l / n : "NA"), (n ? p / n : "NA") }}'
+        > {output.profile}
+        """)
+
+
+# Coverage regions: the capture targets for capture samples, fixed-size bins otherwise
+def _qc_mosdepth_by(wildcards):
+    if wildcards.seq_type == "capture":
+        return _qc_get_intervals(wildcards)[0].replace(".interval_list", ".bed")
+    return []
+
+
+# Coverage distributions and per-region means without ("dedup", default flags) and with ("withdup") duplicates
+rule _qc_mosdepth:
+    input:
+        bam = ancient(str(rules._qc_input_bam.output.bam)),
+        bai = ancient(str(rules._qc_input_bam.output.bai)),
+        fasta = str(rules._qc_input_references.output.genome_fa),
+        regions = _qc_mosdepth_by
+    output:
+        dist = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.mosdepth.global.dist.txt",
+        regions = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.regions.bed.gz"
+    log:
+        CFG["logs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.mosdepth.log"
+    wildcard_constraints:
+        dups = "dedup|withdup"
+    params:
+        prefix = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}",
+        flag = lambda w: "1796" if w.dups == "dedup" else "772",
+        by = lambda w, input: input.regions if w.seq_type == "capture" else str(CFG["complexity_bin_size"]),
+        opts = CFG["options"]["mosdepth"]
+    conda:
+        CFG["conda_envs"]["mosdepth"]
+    container:
+        CFG["container_envs"]["mosdepth"]
+    threads:
+        CFG["threads"]["mosdepth"]
+    resources:
+        **CFG["resources"]["mosdepth"]
+    shell:
+        op.as_one_line("""
+        mosdepth {params.opts} -n -t {threads} --flag {params.flag} --by {params.by} --fasta {input.fasta}
+        {params.prefix} {input.bam} > {log} 2>&1
+        """)
+
+
+# GC content and N count of each fixed-size bin of the genome
+rule _qc_bin_gc:
+    input:
+        fasta = str(rules._qc_input_references.output.genome_fa),
+        fai = str(rules._qc_input_references.output.genome_fai)
+    output:
+        gc = CFG["dirs"]["complexity"] + "bin_gc/{genome_build}.bins.gc.tsv"
+    params:
+        size = CFG["complexity_bin_size"]
+    conda:
+        CFG["conda_envs"]["bedtools"]
+    container:
+        CFG["container_envs"]["bedtools"]
+    shell:
+        op.as_one_line("""
+        bedtools makewindows -g {input.fai} -w {params.size} |
+        bedtools nuc -fi {input.fasta} -bed stdin |
+        awk 'BEGIN {{ OFS = "\\t"; print "chrom", "start", "end", "gc", "n_share" }} NR > 1 {{ print $1, $2, $3, $5, $10 / $12 }}'
+        > {output.gc}
+        """)
+
+
+# GC bias over the whole genome, for every seq_type
+rule _qc_gc_bias:
+    input:
+        bam = ancient(str(rules._qc_input_bam.output.bam)),
+        fasta = str(rules._qc_input_references.output.genome_fa)
+    output:
+        detail = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.gc_bias.detail.txt",
+        summary = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.gc_bias.summary.txt",
+        chart = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.gc_bias.pdf"
+    log:
+        CFG["logs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.gc_bias.log"
+    params:
+        opts = CFG["options"]["CollectGcBiasMetrics"],
+        jvmheap = lambda wildcards, resources: int(resources.mem_mb * 0.8)
+    conda:
+        CFG["conda_envs"]["gatkR"]
+    container:
+        CFG["container_envs"]["gatkR"]
+    threads: 1
+    resources:
+        **CFG["resources"]["gc_bias"]
+    shell:
+        op.as_one_line("""
+        gatk --java-options "-Xmx{params.jvmheap}m" CollectGcBiasMetrics {params.opts}
+        -I {input.bam} -R {input.fasta} -O {output.detail} -S {output.summary} -CHART {output.chart} > {log} 2>&1
+        """)
+
+
+# Complexity curve: expected distinct fragments (paired) or reads against reads sequenced. A library that the default
+# fit rejects is refitted in defects mode (-D); a library neither fits gets a header-only curve.
+rule _qc_preseq:
+    input:
+        bam = ancient(str(rules._qc_input_bam.output.bam)),
+        fasta = str(rules._qc_input_references.output.genome_fa),
+        profile = str(rules._qc_read_profile.output.profile)
+    output:
+        curve = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.preseq.lc_extrap.txt"
+    log:
+        CFG["logs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.preseq.log"
+    params:
+        opts = CFG["options"]["preseq"]
+    conda:
+        CFG["conda_envs"]["preseq"]
+    container:
+        CFG["container_envs"]["preseq"]
+    threads: 2
+    resources:
+        **CFG["resources"]["preseq"]
+    shell:
+        op.as_one_line("""
+        P=$(awk 'NR == 2 && $3 != "NA" && $3 > 0.5 {{ print "-P" }}' {input.profile});
+        run() {{ samtools view -u -T {input.fasta} -F 0x904 {input.bam} |
+                 preseq lc_extrap {params.opts} -B $P "$@" -o {output.curve} /dev/stdin; }};
+        run > {log} 2>&1 || {{ echo "refit in defects mode" >> {log}; run -D >> {log} 2>&1; }} ||
+        {{ echo "no fit" >> {log}; printf "TOTAL_READS\\tEXPECTED_DISTINCT\\tLOWER_0.95CI\\tUPPER_0.95CI\\n" > {output.curve}; }}
+        """)
+
+
+def _qc_complexity_inputs(wildcards):
+    i = {
+        "profile": str(rules._qc_read_profile.output.profile),
+        "dedup_dist": expand(str(rules._qc_mosdepth.output.dist), dups="dedup", allow_missing=True)[0],
+        "dedup_regions": expand(str(rules._qc_mosdepth.output.regions), dups="dedup", allow_missing=True)[0],
+        "withdup_dist": expand(str(rules._qc_mosdepth.output.dist), dups="withdup", allow_missing=True)[0],
+        "withdup_regions": expand(str(rules._qc_mosdepth.output.regions), dups="withdup", allow_missing=True)[0],
+        "gc_summary": str(rules._qc_gc_bias.output.summary),
+        "preseq": str(rules._qc_preseq.output.curve)
+    }
+    if wildcards.seq_type != "capture":
+        i["bin_gc"] = str(rules._qc_bin_gc.output.gc)
+    return i
+
+
+# One row of evenness, GC and complexity metrics per sample
+rule _qc_complexity_metrics:
+    input:
+        unpack(_qc_complexity_inputs)
+    output:
+        tsv = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.complexity.tsv"
+    params:
+        fixed_reads = lambda w: CFG["preseq_fixed_reads"][w.seq_type]
+    conda:
+        CFG["conda_envs"]["gatkR"]
+    container:
+        CFG["container_envs"]["Rscript"]
+    resources:
+        **CFG["resources"]["collect"]
+    script:
+        "src/R/complexity_metrics.R"
+
+
+rule _qc_output_complexity:
+    input:
+        tsv = str(rules._qc_complexity_metrics.output.tsv),
+        gc_detail = str(rules._qc_gc_bias.output.detail),
+        preseq = str(rules._qc_preseq.output.curve)
+    output:
+        tsv = CFG["dirs"]["outputs"] + "complexity/{seq_type}--{genome_build}/{sample_id}.complexity.tsv",
+        gc_detail = CFG["dirs"]["outputs"] + "complexity/{seq_type}--{genome_build}/{sample_id}.gc_bias.detail.txt",
+        preseq = CFG["dirs"]["outputs"] + "complexity/{seq_type}--{genome_build}/{sample_id}.preseq.lc_extrap.txt"
+    run:
+        op.relative_symlink(input.tsv, output.tsv, in_module= True)
+        op.relative_symlink(input.gc_detail, output.gc_detail, in_module= True)
+        op.relative_symlink(input.preseq, output.preseq, in_module= True)
+
+
 # Generates the target sentinels for each run, which generate the symlinks
 rule _qc_all:
     input:
@@ -599,7 +792,15 @@ rule _qc_all:
             zip,
             seq_type=_QC_CONTAM["seq_type"],
             genome_build=_QC_CONTAM["genome_build"],
-            sample_id=_QC_CONTAM["sample_id"])
+            sample_id=_QC_CONTAM["sample_id"]),
+        expand(
+            [
+                str(rules._qc_output_complexity.output.tsv)
+            ],
+            zip,
+            seq_type=_QC_COMPLEX["seq_type"],
+            genome_build=_QC_COMPLEX["genome_build"],
+            sample_id=_QC_COMPLEX["sample_id"])
 
 
 ##### CLEANUP #####

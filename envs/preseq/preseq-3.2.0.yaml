@@ -1,0 +1,7 @@
+name: preseq
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - preseq=3.2.0
+  - samtools=1.17
