@@ -621,7 +621,7 @@ rule _qc_mosdepth:
     params:
         prefix = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}",
         flag = lambda w: "1796" if w.dups == "dedup" else "772",
-        by = lambda w, input: input.regions if w.seq_type == "capture" else str(CFG["complexity_bin_size"]),
+        by = lambda w, input, size = str(CFG["complexity_bin_size"]): input.regions if w.seq_type == "capture" else size,
         opts = CFG["options"]["mosdepth"]
     conda:
         CFG["conda_envs"]["mosdepth"]
@@ -740,7 +740,7 @@ rule _qc_complexity_metrics:
     output:
         tsv = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.complexity.tsv"
     params:
-        fixed_reads = lambda w: CFG["preseq_fixed_reads"][w.seq_type]
+        fixed_reads = lambda w, n = CFG["preseq_fixed_reads"]: n[w.seq_type]
     conda:
         CFG["conda_envs"]["gatkR"]
     container:
