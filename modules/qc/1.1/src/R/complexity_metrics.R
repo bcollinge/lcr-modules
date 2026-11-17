@@ -7,8 +7,8 @@
 #   region_cv = sd / mean of region means; pct_regions_0.2_5x_median = share within 0.2-5 x the median region.
 # Bin dispersion (non-capture): fragments per autosomal bin (mean depth x bin / read length, halved for paired reads),
 #   robust variance / median within GC deciles of bins with < 1% N, averaged over deciles; 1 is counting noise alone.
-# Complexity: preseq expected distinct at the seq_type's fixed read count (NA beyond the curve); total reads and
-#   the read count the fit was observed at.
+# Complexity: preseq expected distinct at the seq_type's fixed read count, linear between 1M-read steps (NA beyond the
+#   curve), and the method behind it (c_curve: observed, interpolated; lc_extrap: extrapolated past the reads sequenced).
 # Each base / region metric is given for the dedup and withdup coverage.
 
 suppressPackageStartupMessages(library(data.table))
@@ -67,9 +67,10 @@ out[, `:=`(gc_at_dropout = gc$AT_DROPOUT[1], gc_gc_dropout = gc$GC_DROPOUT[1])]
 
 pc <- fread(i$preseq)
 n <- as.numeric(snakemake@params$fixed_reads)
+hit <- nrow(pc) && n >= min(pc$TOTAL_READS) && n <= max(pc$TOTAL_READS)
 out[, preseq_fixed_reads := n]
-out[, preseq_expected_distinct := if (nrow(pc) && n >= min(pc$TOTAL_READS) && n <= max(pc$TOTAL_READS))
-      approx(pc$TOTAL_READS, pc$EXPECTED_DISTINCT, n)$y else NA_real_]
-out[, preseq_fit := nrow(pc) > 0]
+out[, preseq_expected_distinct := if (hit) approx(pc$TOTAL_READS, pc$EXPECTED_DISTINCT, n)$y else NA_real_]
+out[, preseq_method := if (hit) pc$METHOD[which.min(abs(pc$TOTAL_READS - n))] else NA_character_]
+out[, preseq_reads_observed := if (nrow(pc)) max(pc[METHOD == "c_curve", TOTAL_READS]) else NA_real_]
 
 fwrite(out, snakemake@output$tsv, sep = "\t", na = "NA")
