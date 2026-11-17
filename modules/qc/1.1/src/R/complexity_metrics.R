@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 # One row of coverage evenness, GC bias and complexity metrics for a sample.
-# Base level (from the mosdepth coverage distribution, over the targets for capture, the genome otherwise):
+# Base level (from the mosdepth coverage distribution: region.dist over the targets for capture, global.dist over the
+#   genome otherwise):
 #   cv = sd / mean of per-base coverage; pct_ge_0.2x_mean = share of bases at >= 0.2 x the mean.
 # Region level (per target for capture, per bin otherwise; regions with mean > 0 in the dedup run):
 #   region_cv = sd / mean of region means; pct_regions_0.2_5x_median = share within 0.2-5 x the median region.
@@ -17,9 +18,7 @@ w <- snakemake@wildcards
 profile <- fread(i$profile)
 
 base_level <- function(path, capture) {
-  d <- fread(path, header = FALSE, col.names = c("chrom", "cov", "frac"))
-  d <- d[chrom == (if (capture) "total_region" else "total")]
-  if (!nrow(d)) d <- fread(path, header = FALSE, col.names = c("chrom", "cov", "frac"))[chrom == "total"]
+  d <- fread(path, header = FALSE, col.names = c("chrom", "cov", "frac"))[chrom == "total"]
   setorder(d, cov)
   p <- d$frac - c(d$frac[-1], 0)
   m <- sum(d$cov * p)
@@ -29,7 +28,7 @@ base_level <- function(path, capture) {
 }
 
 region_level <- function(path) {
-  r <- fread(path, header = FALSE)
+  r <- fread(cmd = paste("gzip -dc", shQuote(path)), header = FALSE)
   x <- r[[ncol(r)]]
   x <- x[x > 0]
   if (length(x) < 10) return(list(region_cv = NA_real_, pct_regions = NA_real_))
@@ -38,7 +37,7 @@ region_level <- function(path) {
 }
 
 dispersion <- function(path, gc_path) {
-  r <- fread(path, header = FALSE, col.names = c("chrom", "start", "end", "mean"))
+  r <- fread(cmd = paste("gzip -dc", shQuote(path)), header = FALSE, col.names = c("chrom", "start", "end", "mean"))
   g <- fread(gc_path)
   r <- merge(r, g, by = c("chrom", "start", "end"))
   r <- r[grepl("^(chr)?[0-9]+$", chrom) & n_share < 0.01]

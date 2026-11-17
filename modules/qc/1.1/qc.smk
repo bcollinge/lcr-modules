@@ -616,6 +616,7 @@ rule _qc_mosdepth:
         regions = _qc_mosdepth_by
     output:
         dist = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.mosdepth.global.dist.txt",
+        region_dist = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.mosdepth.region.dist.txt",
         regions = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.regions.bed.gz"
     log:
         CFG["logs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.mosdepth.log"
@@ -654,6 +655,8 @@ rule _qc_bin_gc:
         CFG["conda_envs"]["bedtools"]
     container:
         CFG["container_envs"]["bedtools"]
+    resources:
+        **CFG["resources"]["bin_gc"]
     shell:
         op.as_one_line("""
         bedtools makewindows -g {input.fai} -w {params.size} |
@@ -724,9 +727,9 @@ rule _qc_preseq:
 def _qc_complexity_inputs(wildcards):
     i = {
         "profile": str(rules._qc_read_profile.output.profile),
-        "dedup_dist": expand(str(rules._qc_mosdepth.output.dist), dups="dedup", allow_missing=True)[0],
+        "dedup_dist": expand(str(rules._qc_mosdepth.output.dist if wildcards.seq_type != "capture" else rules._qc_mosdepth.output.region_dist), dups="dedup", allow_missing=True)[0],
         "dedup_regions": expand(str(rules._qc_mosdepth.output.regions), dups="dedup", allow_missing=True)[0],
-        "withdup_dist": expand(str(rules._qc_mosdepth.output.dist), dups="withdup", allow_missing=True)[0],
+        "withdup_dist": expand(str(rules._qc_mosdepth.output.dist if wildcards.seq_type != "capture" else rules._qc_mosdepth.output.region_dist), dups="withdup", allow_missing=True)[0],
         "withdup_regions": expand(str(rules._qc_mosdepth.output.regions), dups="withdup", allow_missing=True)[0],
         "gc_summary": str(rules._qc_gc_bias.output.summary),
         "preseq": str(rules._qc_preseq.output.curve)

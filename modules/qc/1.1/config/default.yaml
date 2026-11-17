@@ -104,6 +104,8 @@ lcr-modules:
                 mem_mb: 16000
             preseq:
                 mem_mb: 16000
+            bin_gc:
+                mem_mb: 6000
 
         pairing_config:
             genome:
