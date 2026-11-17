@@ -723,13 +723,13 @@ rule _qc_preseq:
         P=$(awk 'NR == 2 && $3 != "NA" && $3 > 0.5 {{ print "-P" }}' {input.profile});
         view() {{ samtools view -u -T {input.fasta} -F 0x904 {input.bam}; }};
         view | preseq c_curve -B $P -s 1000000 -o {params.tmp}.c_curve.txt /dev/stdin > {log} 2>&1;
-        printf "TOTAL_READS\tEXPECTED_DISTINCT\tMETHOD\n" > {params.tmp}.curve.tmp;
-        awk 'NR > 1 {{ print $1 "\t" $2 "\tc_curve" }}' {params.tmp}.c_curve.txt >> {params.tmp}.curve.tmp;
+        printf "TOTAL_READS\\tEXPECTED_DISTINCT\\tMETHOD\\n" > {params.tmp}.curve.tmp;
+        awk 'NR > 1 {{ print $1 "\\t" $2 "\\tc_curve" }}' {params.tmp}.c_curve.txt >> {params.tmp}.curve.tmp;
         top=$(awk 'END {{ print $1 }}' {params.tmp}.c_curve.txt);
         if [ "$top" -lt {params.fixed} ]; then
           run() {{ view | preseq lc_extrap {params.opts} -B $P -e $((2 * {params.fixed})) "$@" -o {params.tmp}.lc_extrap.txt /dev/stdin; }};
           {{ run >> {log} 2>&1 || {{ echo "refit in defects mode" >> {log}; run -D >> {log} 2>&1; }}; }} &&
-          awk -v top="$top" 'NR > 1 && $1 > top {{ print $1 "\t" $2 "\tlc_extrap" }}' {params.tmp}.lc_extrap.txt >> {params.tmp}.curve.tmp ||
+          awk -v top="$top" 'NR > 1 && $1 > top {{ print $1 "\\t" $2 "\\tlc_extrap" }}' {params.tmp}.lc_extrap.txt >> {params.tmp}.curve.tmp ||
           echo "no fit" >> {log};
         fi;
         mv {params.tmp}.curve.tmp {output.curve}
