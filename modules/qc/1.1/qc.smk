@@ -576,8 +576,8 @@ rule _qc_output_contamination:
 
 _QC_COMPLEX = CFG["samples"][CFG["samples"]["seq_type"].isin(CFG["complexity_seq_types"])]
 # bound here because params functions run after cleanup_module removes CFG
-_QC_BIN_SIZE = str(CFG["complexity_bin_size"])
-_QC_PRESEQ_N = CFG["preseq_fixed_reads"]
+_QC_PRESEQ_N = CFG["preseq_fixed_fragments"]
+_QC_GC = CFG["gc_bias_seq_types"]
 
 
 # Read length and paired share from the first 200,000 primary reads
@@ -600,73 +600,7 @@ rule _qc_read_profile:
         """)
 
 
-# Coverage regions: the capture targets for capture samples, fixed-size bins otherwise
-def _qc_mosdepth_by(wildcards):
-    if wildcards.seq_type == "capture":
-        return _qc_get_intervals(wildcards)[0].replace(".interval_list", ".bed")
-    return []
-
-
-# Coverage distributions and per-region means without ("dedup", default flags) and with ("withdup") duplicates
-rule _qc_mosdepth:
-    input:
-        bam = ancient(str(rules._qc_input_bam.output.bam)),
-        bai = ancient(str(rules._qc_input_bam.output.bai)),
-        fasta = str(rules._qc_input_references.output.genome_fa),
-        regions = _qc_mosdepth_by
-    output:
-        dist = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.mosdepth.global.dist.txt",
-        region_dist = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.mosdepth.region.dist.txt",
-        regions = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.regions.bed.gz"
-    log:
-        CFG["logs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}.mosdepth.log"
-    wildcard_constraints:
-        dups = "dedup|withdup"
-    params:
-        prefix = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.{dups}",
-        flag = lambda w: "1796" if w.dups == "dedup" else "772",
-        by = lambda w, input: input.regions if w.seq_type == "capture" else _QC_BIN_SIZE,
-        opts = CFG["options"]["mosdepth"]
-    conda:
-        CFG["conda_envs"]["mosdepth"]
-    container:
-        CFG["container_envs"]["mosdepth"]
-    threads:
-        CFG["threads"]["mosdepth"]
-    resources:
-        **CFG["resources"]["mosdepth"]
-    shell:
-        op.as_one_line("""
-        mosdepth {params.opts} -n -t {threads} --flag {params.flag} --by {params.by} --fasta {input.fasta}
-        {params.prefix} {input.bam} > {log} 2>&1
-        """)
-
-
-# GC content and N count of each fixed-size bin of the genome
-rule _qc_bin_gc:
-    input:
-        fasta = str(rules._qc_input_references.output.genome_fa),
-        fai = str(rules._qc_input_references.output.genome_fai)
-    output:
-        gc = CFG["dirs"]["complexity"] + "bin_gc/{genome_build}.bins.gc.tsv"
-    params:
-        size = CFG["complexity_bin_size"]
-    conda:
-        CFG["conda_envs"]["bedtools"]
-    container:
-        CFG["container_envs"]["bedtools"]
-    resources:
-        **CFG["resources"]["bin_gc"]
-    shell:
-        op.as_one_line("""
-        bedtools makewindows -g {input.fai} -w {params.size} |
-        bedtools nuc -fi {input.fasta} -bed stdin |
-        awk 'BEGIN {{ OFS = "\\t"; print "chrom", "start", "end", "gc", "n_share" }} NR > 1 {{ print $1, $2, $3, $5, $10 / $12 }}'
-        > {output.gc}
-        """)
-
-
-# GC bias over the whole genome, for every seq_type
+# GC bias over the whole genome, for the gc_bias_seq_types
 rule _qc_gc_bias:
     input:
         bam = ancient(str(rules._qc_input_bam.output.bam)),
@@ -694,10 +628,11 @@ rule _qc_gc_bias:
         """)
 
 
-# Complexity curve: expected distinct fragments (paired) or reads at 1M-read steps. preseq c_curve interpolates the
-# observed counts exactly up to the reads sequenced (no fit). Only a library with fewer reads than its seq_type's fixed
-# count is also extrapolated with lc_extrap, to twice that count (defects mode if the default fit fails; a header-only
-# curve if neither fits). curve: TOTAL_READS, EXPECTED_DISTINCT, METHOD (c_curve or lc_extrap).
+# Complexity curve: expected distinct fragments (reads if unpaired) at 1M steps. preseq c_curve interpolates the
+# observed counts exactly up to the fragments sequenced (no fit). Only a library with fewer fragments than its
+# seq_type's fixed count is also extrapolated with lc_extrap, to twice that count (defects mode if the default fit fails
+# or runs out of time; observed points only if neither fits). curve: TOTAL_FRAGMENTS, EXPECTED_DISTINCT, METHOD
+# (c_curve or lc_extrap).
 rule _qc_preseq:
     input:
         bam = ancient(str(rules._qc_input_bam.output.bam)),
@@ -710,6 +645,7 @@ rule _qc_preseq:
     params:
         opts = CFG["options"]["preseq"],
         fixed = lambda w: int(_QC_PRESEQ_N[w.seq_type]),
+        timeout = CFG["preseq_extrap_timeout"],
         tmp = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.preseq"
     conda:
         CFG["conda_envs"]["preseq"]
@@ -723,11 +659,11 @@ rule _qc_preseq:
         P=$(awk 'NR == 2 && $3 != "NA" && $3 > 0.5 {{ print "-P" }}' {input.profile});
         view() {{ samtools view -u -T {input.fasta} -F 0x904 {input.bam}; }};
         view | preseq c_curve -B $P -s 1000000 -o {params.tmp}.c_curve.txt /dev/stdin > {log} 2>&1;
-        printf "TOTAL_READS\\tEXPECTED_DISTINCT\\tMETHOD\\n" > {params.tmp}.curve.tmp;
+        printf "TOTAL_FRAGMENTS\\tEXPECTED_DISTINCT\\tMETHOD\\n" > {params.tmp}.curve.tmp;
         awk 'NR > 1 {{ print $1 "\\t" $2 "\\tc_curve" }}' {params.tmp}.c_curve.txt >> {params.tmp}.curve.tmp;
         top=$(awk 'END {{ print $1 }}' {params.tmp}.c_curve.txt);
         if [ "$top" -lt {params.fixed} ]; then
-          run() {{ view | preseq lc_extrap {params.opts} -B $P -e $((2 * {params.fixed})) "$@" -o {params.tmp}.lc_extrap.txt /dev/stdin; }};
+          run() {{ view | timeout {params.timeout} preseq lc_extrap {params.opts} -B $P -e $((2 * {params.fixed})) "$@" -o {params.tmp}.lc_extrap.txt /dev/stdin; }};
           {{ run >> {log} 2>&1 || {{ echo "refit in defects mode" >> {log}; run -D >> {log} 2>&1; }}; }} &&
           awk -v top="$top" 'NR > 1 && $1 > top {{ print $1 "\\t" $2 "\\tlc_extrap" }}' {params.tmp}.lc_extrap.txt >> {params.tmp}.curve.tmp ||
           echo "no fit" >> {log};
@@ -739,26 +675,21 @@ rule _qc_preseq:
 def _qc_complexity_inputs(wildcards):
     i = {
         "profile": str(rules._qc_read_profile.output.profile),
-        "dedup_dist": expand(str(rules._qc_mosdepth.output.dist if wildcards.seq_type != "capture" else rules._qc_mosdepth.output.region_dist), dups="dedup", allow_missing=True)[0],
-        "dedup_regions": expand(str(rules._qc_mosdepth.output.regions), dups="dedup", allow_missing=True)[0],
-        "withdup_dist": expand(str(rules._qc_mosdepth.output.dist if wildcards.seq_type != "capture" else rules._qc_mosdepth.output.region_dist), dups="withdup", allow_missing=True)[0],
-        "withdup_regions": expand(str(rules._qc_mosdepth.output.regions), dups="withdup", allow_missing=True)[0],
-        "gc_summary": str(rules._qc_gc_bias.output.summary),
         "preseq": str(rules._qc_preseq.output.curve)
     }
-    if wildcards.seq_type != "capture":
-        i["bin_gc"] = str(rules._qc_bin_gc.output.gc)
+    if wildcards.seq_type in _QC_GC:
+        i["gc_summary"] = str(rules._qc_gc_bias.output.summary)
     return i
 
 
-# One row of evenness, GC and complexity metrics per sample
+# One row of complexity and GC bias metrics per sample
 rule _qc_complexity_metrics:
     input:
         unpack(_qc_complexity_inputs)
     output:
         tsv = CFG["dirs"]["complexity"] + "{seq_type}--{genome_build}/{sample_id}.complexity.tsv"
     params:
-        fixed_reads = lambda w: _QC_PRESEQ_N[w.seq_type]
+        fixed_fragments = lambda w: _QC_PRESEQ_N[w.seq_type]
     conda:
         CFG["conda_envs"]["gatkR"]
     container:
@@ -772,15 +703,12 @@ rule _qc_complexity_metrics:
 rule _qc_output_complexity:
     input:
         tsv = str(rules._qc_complexity_metrics.output.tsv),
-        gc_detail = str(rules._qc_gc_bias.output.detail),
         preseq = str(rules._qc_preseq.output.curve)
     output:
         tsv = CFG["dirs"]["outputs"] + "complexity/{seq_type}--{genome_build}/{sample_id}.complexity.tsv",
-        gc_detail = CFG["dirs"]["outputs"] + "complexity/{seq_type}--{genome_build}/{sample_id}.gc_bias.detail.txt",
         preseq = CFG["dirs"]["outputs"] + "complexity/{seq_type}--{genome_build}/{sample_id}.preseq.curve.txt"
     run:
         op.relative_symlink(input.tsv, output.tsv, in_module= True)
-        op.relative_symlink(input.gc_detail, output.gc_detail, in_module= True)
         op.relative_symlink(input.preseq, output.preseq, in_module= True)
 
 
