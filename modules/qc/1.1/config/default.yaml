@@ -17,19 +17,21 @@ lcr-modules:
             CollectHsMetrics: "--VALIDATION_STRINGENCY LENIENT"
             GetPileupSummaries: ""
             CalculateContamination: ""
-            mosdepth: ""
             CollectGcBiasMetrics: "--VALIDATION_STRINGENCY LENIENT"
             preseq: ""
 
-        # seq_types that get evenness (mosdepth, with and without duplicates), GC bias and complexity (preseq) metrics
+        # seq_types that get the preseq complexity figure
         complexity_seq_types: ["genome", "capture", "lpwgs"]
-        # bin size for non-capture coverage regions and the bin dispersion index
-        complexity_bin_size: 100000
-        # expected distinct fragments are reported at this many reads, per seq_type, so libraries compare at equal depth
-        preseq_fixed_reads:
+        # seq_types that also get genome-wide GC bias (CollectGcBiasMetrics); capture dropout comes from CollectHsMetrics
+        gc_bias_seq_types: ["genome", "lpwgs"]
+        # expected distinct fragments (reads if unpaired) are reported at this many fragments, per seq_type, so libraries
+        # compare at equal depth
+        preseq_fixed_fragments:
             capture: 20000000
             genome: 200000000
             lpwgs: 5000000
+        # time limit (GNU timeout duration) on each lc_extrap attempt; past it the curve stays at the observed fragments
+        preseq_extrap_timeout: "2h"
 
         # seq_types that get GetPileupSummaries + CalculateContamination
         contamination_seq_types: ["genome", "capture"]
@@ -56,7 +58,6 @@ lcr-modules:
             bedtools: "{MODSDIR}/envs/bedtools-2.29.2.yaml"
             gatkR: "{MODSDIR}/envs/gatkR.yaml"
             gatk: "{MODSDIR}/envs/gatk-4.1.8.1.yaml"
-            mosdepth: "{MODSDIR}/envs/mosdepth-0.3.8.yaml"
             preseq: "{MODSDIR}/envs/preseq-3.2.0.yaml"
 
         container_envs:
@@ -65,7 +66,6 @@ lcr-modules:
             bedtools: "docker://quay.io/biocontainers/bedtools:2.29.2--hc088bd4_0"
             gatkR: "docker://broadinstitute/gatk:4.2.6.1"
             gatk: "docker://quay.io/biocontainers/gatk4:4.1.8.1--py38_0"
-            mosdepth: "docker://quay.io/biocontainers/mosdepth:0.3.8--hd299d5a_0"
             preseq: "docker://quay.io/biocontainers/preseq:3.2.0--hdcf5f25_6"
             Rscript: "docker://rocker/tidyverse:4.3.3"
 
@@ -76,7 +76,6 @@ lcr-modules:
             CollectMetrics: 24
             collect: 2
             contamination: 1
-            mosdepth: 4
 
 
         resources:
@@ -98,14 +97,10 @@ lcr-modules:
             contamination:
                 mem_mb: 6000
                 contamination: 1
-            mosdepth:
-                mem_mb: 8000
             gc_bias:
                 mem_mb: 16000
             preseq:
                 mem_mb: 16000
-            bin_gc:
-                mem_mb: 6000
 
         pairing_config:
             genome:
