@@ -610,7 +610,7 @@ rule _panel_of_normals_purecn_mutect2_germline:
         fasta = str(rules._panel_of_normals_symlink_fasta.output.fasta),
         gatk_dict = str(rules._panel_of_normals_symlink_fasta.output.gatk_dict),
         gnomad = ancient(reference_files("genomes/{genome_build}/variation/af-only-gnomad.{genome_build}.vcf.gz")),
-        target_regions = str(rules._panel_of_normals_purecn_sort_intervals.output.targets_sorted)
+        target_regions = CFG["inputs"].get("mutect2_intervals") or str(rules._panel_of_normals_purecn_sort_intervals.output.targets_sorted)
     output:
         vcf = temp(CFG["dirs"]["purecn_mutect2"] + "{seq_type}--{genome_build}/{capture_space}/{sample_id}/{sample_id}.{chrom}.vcf.gz"),
         tbi = temp(CFG["dirs"]["purecn_mutect2"] + "{seq_type}--{genome_build}/{capture_space}/{sample_id}/{sample_id}.{chrom}.vcf.gz.tbi"),
