@@ -3,6 +3,9 @@
 # Complexity: preseq expected distinct fragments (reads if unpaired; paired_share says which) at the seq_type's fixed
 #   count, linear between 1M steps (NA beyond the curve), and the method behind it (c_curve: observed, interpolated;
 #   lc_extrap: extrapolated past the fragments sequenced).
+#   In paired mode preseq merges two mates into one fragment only when they are on the same chromosome and span at most
+#   its seg_len (5,000 bp by default); otherwise each mate counts as its own unit, without a message. Libraries with
+#   many inter-chromosomal or long-insert pairs therefore count some fragments twice.
 # GC bias (gc_bias_seq_types only, NA otherwise): AT and GC dropout from CollectGcBiasMetrics over the whole genome.
 
 suppressPackageStartupMessages(library(data.table))
