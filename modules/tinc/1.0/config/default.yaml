@@ -1,0 +1,49 @@
+lcr-modules:
+
+    tinc:
+
+        inputs:
+            # A tumour-normal MAF holding the normal's read counts (n_ref_count, n_alt_count) beside the tumour's.
+            # Available wildcards: {seq_type} {genome_build} {tumour_id} {normal_id} {pair_status}
+            maf: "__UPDATE__"
+            # The pair's Battenberg subclones.txt (allele-specific copy number). Same wildcards.
+            subclones: "__UPDATE__"
+
+        options:
+            # Battenberg state used as copy number: clonal (segments whose first state has fraction 1), majority
+            # (the state with the larger fraction) or state1 (the first state as written).
+            cna_mode: "majority"
+            # Battenberg rows with no state called (fraction 0): drop, or as_written (1:1).
+            cna_filler: "drop"
+            # Set before TINC::autofit (MOBSTER initialisation and down-sampling are random).
+            seed: 2024
+            # Passed to TINC::autofit.
+            fast: False
+            # A pair is contaminated when `estimate` exceeds `above` and the tumour fraction TIT is at least
+            # `purity_at_least`; below that purity it is not_assessable.
+            call:
+                estimate: "TIN_rf"
+                above: 0.01
+                purity_at_least: 0.25
+
+        conda_envs:
+            tinc: "{MODSDIR}/envs/tinc-0.1.0.yaml"
+
+        threads:
+            maf_to_vcf: 1
+            tinc: 1
+
+        resources:
+            maf_to_vcf:
+                mem_mb: 2000
+            # Multiplied by the attempt number on a retry.
+            tinc:
+                mem_mb: 8000
+            merge:
+                mem_mb: 2000
+
+        pairing_config:
+            genome:
+                run_paired_tumours: True
+                run_unpaired_tumours_with: null
+                run_paired_tumours_as_unpaired: False
