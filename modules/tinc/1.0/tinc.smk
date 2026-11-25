@@ -131,7 +131,7 @@ def _tinc_build_tsvs(wildcards):
                   pair_status = runs["pair_status"])
 
 
-# One row per pair, per seq_type and genome build.
+# One row per pair, per seq_type and genome build; columns aligned by name, NA where a pair has no fit.
 rule _tinc_merge:
     input:
         tsvs = _tinc_build_tsvs
@@ -140,13 +140,16 @@ rule _tinc_merge:
     resources:
         **CFG["resources"]["merge"]
     run:
-        with open(output.tsv, "w") as out:
-            for k, path in enumerate(input.tsvs):
-                with open(path) as f:
-                    header = f.readline()
-                    if k == 0:
-                        out.write(header)
-                    out.writelines(f)
+        import csv
+        rows = []
+        for path in input.tsvs:
+            with open(path) as f:
+                rows.extend(csv.DictReader(f, delimiter = "\t"))
+        columns = list(dict.fromkeys(key for row in rows for key in row))
+        with open(output.tsv, "w", newline = "") as out:
+            writer = csv.DictWriter(out, fieldnames = columns, delimiter = "\t", restval = "NA", lineterminator = "\n")
+            writer.writeheader()
+            writer.writerows(rows)
 
 
 rule _tinc_all:
