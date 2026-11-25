@@ -40,6 +40,7 @@ wildcard_constraints:
 
 _TINC_PAIR = "{seq_type}--{genome_build}/{tumour_id}--{normal_id}--{pair_status}"
 _TINC_RUNS = CFG["runs"]
+_TINC_MEM = CFG["resources"]["tinc"]["mem_mb"]
 
 assert CFG["options"]["cna_mode"] in ("clonal", "majority", "state1"), "options.cna_mode"
 assert CFG["options"]["cna_filler"] in ("drop", "as_written"), "options.cna_filler"
@@ -105,7 +106,7 @@ rule _tinc_run:
     threads:
         CFG["threads"]["tinc"]
     resources:
-        mem_mb = lambda wildcards, attempt: CFG["resources"]["tinc"]["mem_mb"] * attempt
+        mem_mb = lambda wildcards, attempt: _TINC_MEM * attempt
     script:
         "src/tinc_run.R"
 
